@@ -6,9 +6,13 @@ This project explores machine learning techniques applied to sports analytics. O
 
 ## Objectives
 
-- **Regular Season Rankings:** Predict the final rankings for each conference.
-- **Coaching Changes:** Identify teams likely to change coaches.
-- **Individual Awards:** Forecast the winners of each individual award.
+In the upcoming season, our goals are to develop predictive models for:
+
+- **Regular Season Rankings:** Estimate the final standings for each conference based on historical and current season data.
+- **Coaching Changes:** Identify teams with a high probability of changing coaches, using trends and performance indicators.
+- **Individual Awards:** Forecast recipients of major individual awards by analyzing player statistics and performance metrics.
+
+These objectives will guide our analysis and model development throughout the project.
 
 ## Dataset
 
