@@ -12,11 +12,14 @@ df_teams = df_teams.drop_duplicates()
 # normalize common invalid placeholders in all object/string columns
 def normalize_placeholders(df):
 	replace_map = {
-		'': None,
-		'nan': None,
-		'NaN': None,
-		'NaT': None,
-		'None': None
+		'None': 'Unknown',
+		'': 'Unknown',
+		'nan': np.nan,
+		'NaT': pd.NaT,
+		'0-00-0000': pd.NaT,
+		'0000-00-00': pd.NaT,
+		'0/00/0000': pd.NaT,
+		'00/00/0000': pd.NaT
 	}
 	for col in df.select_dtypes(include=['object']).columns:
 		# strip whitespace and normalize common placeholder strings to None

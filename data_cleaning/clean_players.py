@@ -48,14 +48,15 @@ for col in ['birthDate', 'deathDate']:
 	# keep NaNs as-is, convert others to string for normalization
 	df_players[col] = df_players[col].where(df_players[col].notna(), None)
 	df_players[col] = df_players[col].astype(object).astype(str).str.strip().replace({
-        'None': "Unknown",
-        '': "Unknown",
-        'nan': np.nan,
-        'NaT': np.nan,
-        '0-00-0000': np.nan,
-        '0000-00-00': np.nan,
-        '0/00/0000': np.nan,
-        '00/00/0000': np.nan
+
+		'None': 'Unknown',
+		'': 'Unknown',
+		'nan': np.nan,
+		'NaT': pd.NaT,
+		'0-00-0000': pd.NaT,
+		'0000-00-00': pd.NaT,
+		'0/00/0000': pd.NaT,
+		'00/00/0000': pd.NaT
 	})
 
 def _parse_dates(series):
