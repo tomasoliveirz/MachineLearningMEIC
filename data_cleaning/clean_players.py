@@ -1,5 +1,7 @@
+import os
 import pandas as pd
 import numpy as np
+import warnings
 
 # load players.csv
 df_players = pd.read_csv('../data/players.csv')
@@ -36,8 +38,40 @@ df_players['college'] = df_players['college'].fillna('Unknown')
 df_players['collegeOther'] = df_players['collegeOther'].fillna('Unknown')
 
 # birthDate and deathDate - convert to datetime, replace invalid dates with NaT
-df_players['birthDate'] = pd.to_datetime(df_players['birthDate'], errors='coerce')
-df_players['deathDate'] = pd.to_datetime(df_players['deathDate'], errors='coerce')
+# normalize common invalid placeholders and strip whitespace
+for col in ['birthDate', 'deathDate']:
+	# keep NaNs as-is, convert others to string for normalization
+	df_players[col] = df_players[col].where(df_players[col].notna(), None)
+	df_players[col] = df_players[col].astype(object).astype(str).str.strip().replace({
+		'None': None,
+		'': None,
+		'nan': None,
+		'NaT': None,
+		'0-00-0000': None,
+		'0000-00-00': None,
+		'0/00/0000': None,
+		'00/00/0000': None
+	})
+
+def _parse_dates(series):
+	s = series.copy()
+	# try explicit common formats first to avoid inference warnings
+	parsed = pd.to_datetime(s, format='%Y-%m-%d', errors='coerce')
+	parsed = parsed.fillna(pd.to_datetime(s, format='%d/%m/%Y', errors='coerce'))
+	parsed = parsed.fillna(pd.to_datetime(s, format='%m/%d/%Y', errors='coerce'))
+	# final fallback using dateutil; suppress the specific infer-format warning
+	if parsed.isna().any():
+		with warnings.catch_warnings():
+			# suppress pandas warning about parsing with dayfirst when formats were tried
+			warnings.filterwarnings('ignore', message='Could not infer format')
+			warnings.filterwarnings('ignore', message="Parsing dates in %Y-%m-%d format when dayfirst=True was specified")
+			parsed = parsed.fillna(pd.to_datetime(s, errors='coerce'))
+	return parsed
+
+df_players['birthDate'] = _parse_dates(df_players['birthDate'])
+df_players['deathDate'] = _parse_dates(df_players['deathDate'])
+    
+os.makedirs('../data_cleaning_output', exist_ok=True)
 
 # save cleaned players dataset
 df_players.to_csv('../data_cleaning_output/players_cleaned.csv', index=False)
