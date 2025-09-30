@@ -1,0 +1,33 @@
+WNBA DATA ANALYSIS REPORT
+========================================
+
+DATASET OVERVIEW
+--------------------
+Awards: 95 records
+Coaches: 162 records
+Players: 893 records
+Player_stats: 1,876 records
+Playoffs_series: 70 records
+Playoffs_teams: 80 records
+Teams: 142 records
+
+PLAYERS ANALYSIS
+--------------------
+Total players: 893
+Average height: 65.5 inches
+Tallest player: 80 inches
+Shortest player: 0 inches
+
+PERFORMANCE STATISTICS
+-------------------------
+Total player-season records: 1,876
+Unique players: 555
+Highest single-season points: 860
+Average points per season: 176.3
+
+TEAM ANALYSIS
+---------------
+Total team seasons: 142
+Different teams: 20
+Maximum wins in a season: 28
+Average wins per season: 16.7
