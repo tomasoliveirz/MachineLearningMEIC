@@ -9,6 +9,8 @@ df_players = pd.read_csv('../data/players.csv')
 # clean duplicates
 df_players = df_players.drop_duplicates()
 
+df_players = df_players.replace(r'^\s*$', np.nan, regex=True)
+
 # treat 0 as NaN for numeric columns before dropna 
 numeric_cols = ['firstseason', 'lastseason', 'height', 'weight']
 df_players[numeric_cols] = df_players[numeric_cols].replace(0, np.nan)
@@ -27,6 +29,9 @@ df_players['lastseason'] = df_players['lastseason'].replace(0, np.nan)
 df_players['height'] = df_players['height'].replace(0, np.nan)
 df_players['weight'] = df_players['weight'].replace(0, np.nan)
 
+# set weights below or equal to 50 pounds to NaN as unrealistic
+df_players['weight'] = df_players['weight'].where(df_players['weight'] > 60, np.nan)
+
 # set heights below or equal to 24 inches to NaN as unrealistic
 df_players['height'] = df_players['height'].where(df_players['height'] > 24, np.nan)
 
@@ -43,14 +48,14 @@ for col in ['birthDate', 'deathDate']:
 	# keep NaNs as-is, convert others to string for normalization
 	df_players[col] = df_players[col].where(df_players[col].notna(), None)
 	df_players[col] = df_players[col].astype(object).astype(str).str.strip().replace({
-		'None': None,
-		'': None,
-		'nan': None,
-		'NaT': None,
-		'0-00-0000': None,
-		'0000-00-00': None,
-		'0/00/0000': None,
-		'00/00/0000': None
+        'None': "Unknown",
+        '': "Unknown",
+        'nan': np.nan,
+        'NaT': np.nan,
+        '0-00-0000': np.nan,
+        '0000-00-00': np.nan,
+        '0/00/0000': np.nan,
+        '00/00/0000': np.nan
 	})
 
 def _parse_dates(series):
@@ -73,5 +78,5 @@ df_players['deathDate'] = _parse_dates(df_players['deathDate'])
 
 os.makedirs('../data_cleaning/data_cleaning_output', exist_ok=True)
 
-# save cleaned players dataset
-df_players.to_csv('../data_cleaning/data_cleaning_output/players_cleaned.csv', index=False)
+# save cleaned players dataset, write NaNs explicitly as 'NaN'
+df_players.to_csv('../data_cleaning/data_cleaning_output/players_cleaned.csv', index=False, na_rep='NaN')

@@ -23,7 +23,8 @@ def load_teams_dataframe():
 
 
 def safe_div(a, b):
-    return np.where((b == 0) | (pd.isna(b)), np.nan, a / b)
+    result = np.where((b == 0) | (pd.isna(b)), np.nan, a / b)
+    return np.round(result, 2)
 
 
 def aggregate_team_season(df):
@@ -98,6 +99,17 @@ def aggregate_team_season(df):
         'home_win_pct', 'away_win_pct', 'prev_season_win_pct_1', 'prev_season_win_pct_3', 'prev_season_win_pct_5',
         'prev_point_diff_3', 'prev_point_diff_5', 'prev_wins_1', 'win_pct_change_from_prev'
     ]
+
+    # columns to round to 2 decimal places
+    cols_to_round = [
+        'point_diff', 'season_win_pct', 'home_win_pct', 'away_win_pct',
+        'prev_season_win_pct_1', 'prev_season_win_pct_3', 'prev_season_win_pct_5',
+        'prev_point_diff_3', 'prev_point_diff_5', 'prev_wins_1', 'win_pct_change_from_prev'
+    ]
+    
+    for c in cols_to_round:
+        if c in df.columns:
+            df[c] = df[c].round(2)
 
     existing = [c for c in cols_keep if c in df.columns]
     return df.loc[:, existing]
