@@ -101,7 +101,7 @@ if const_cols:
 	df_teams = df_teams.drop(columns=const_cols)
 
 # ensure output directory exists and save cleaned teams dataset
-os.makedirs('../data_cleaning_output', exist_ok=True)
-df_teams.to_csv('../data_cleaning_output/teams_cleaned.csv', index=False)
+os.makedirs('../data_cleaning/data_cleaning_output', exist_ok=True)
+df_teams.to_csv('../data_cleaning/data_cleaning_output/teams_cleaned.csv', index=False)
 
-print('Saved cleaned teams to ../data_cleaning_output/teams_cleaned.csv (rows: {})'.format(len(df_teams)))
+print('Saved cleaned teams to ../data_cleaning/data_cleaning_output/teams_cleaned.csv (rows: {})'.format(len(df_teams)))

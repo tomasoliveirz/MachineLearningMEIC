@@ -70,8 +70,8 @@ def _parse_dates(series):
 
 df_players['birthDate'] = _parse_dates(df_players['birthDate'])
 df_players['deathDate'] = _parse_dates(df_players['deathDate'])
-    
-os.makedirs('../data_cleaning_output', exist_ok=True)
+
+os.makedirs('../data_cleaning/data_cleaning_output', exist_ok=True)
 
 # save cleaned players dataset
-df_players.to_csv('../data_cleaning_output/players_cleaned.csv', index=False)
+df_players.to_csv('../data_cleaning/data_cleaning_output/players_cleaned.csv', index=False)
