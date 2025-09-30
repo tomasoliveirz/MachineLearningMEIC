@@ -42,6 +42,14 @@ for c in numeric_cols:
 	if c in df_teams.columns:
 		df_teams[c] = pd.to_numeric(df_teams[c], errors='coerce')
 
+
+# verify if won + lost == GP when all three are present
+if all(col in df_teams.columns for col in ['won', 'lost', 'GP']):
+	mask = df_teams[['won', 'lost', 'GP']].notna().all(axis=1)
+	# create a single boolean indexer aligned to df_teams rows
+	discrepancy_mask = mask & ((df_teams['won'] + df_teams['lost']) != df_teams['GP'])
+	discrepancies = df_teams.loc[discrepancy_mask, ['franchID', 'year', 'won', 'lost', 'GP']]
+
 # fill sensible defaults for categorical/text columns
 if 'divID' in df_teams.columns:
 	df_teams['divID'] = df_teams['divID'].fillna('Unknown')
