@@ -116,7 +116,7 @@ def aggregate_team_season(df):
 
 
 def main():
-    out_dir = Path(__file__).resolve().parents[1] / 'data_cleaning_output'
+    out_dir = Path(__file__).resolve().parents[1] / 'data_processing'
     out_dir.mkdir(parents=True, exist_ok=True)
 
     df_teams = load_teams_dataframe()
