@@ -1,74 +1,174 @@
-# MachineLearningMEIC
 
-## Project Overview
+# AC — Sports Analytics Pipeline
 
-This project explores machine learning techniques applied to sports analytics. Over the past 10 years, comprehensive data has been collected on players, teams, coaches, games, and various performance metrics. The objective is to leverage this dataset to make predictions for the upcoming test season.
+This repository contains a full **data pipeline for sports analytics**, focused on players, teams, rookies, and seasonal performance.  
+It is structured to allow a clean end-to-end workflow: from raw data to cleaned datasets, feature engineering, and final analysis reports with visualizations.
 
-## Objectives
+---
 
-In the upcoming season, our goals are to develop predictive models for:
+## Project Structure
 
-- **Regular Season Rankings:** Estimate the final standings for each conference based on historical and current season data.
-- **Coaching Changes:** Identify teams with a high probability of changing coaches, using trends and performance indicators.
-- **Individual Awards:** Forecast recipients of major individual awards by analyzing player statistics and performance metrics.
+```bash
+.
+├── data
+│   ├── raw/                # original CSVs
+│   │   ├── players.csv
+│   │   ├── teams.csv
+│   │   ├── players_teams.csv
+│   │   └── ...
+│   ├── processed/          # cleaned + feature engineered datasets
+│   │   ├── players_cleaned.csv
+│   │   ├── teams_cleaned.csv
+│   │   ├── team_season.csv
+│   │   └── team_rookie_features.csv
+├── reports
+│   ├── figures/            # visualizations (charts)
+│   │   ├── raw/
+│   │   │   ├── height_distribution.png
+│   │   │   ├── ...
+│   │   └── cleaned/
+│   │       ├── height_distribution.png
+│   │       ├── ...
+│   └── tables/             # text reports
+│       ├── raw/
+│       │   └── analysis_report.txt
+│       └── cleaned/
+│           └── analysis_report.txt
+├── src
+│   └── ac
+│       ├── analysis/       # reporting & visualization
+│       │   └── analyzer.py
+│       ├── cleaning/       # cleaning scripts
+│       │   ├── clean_players.py
+│       │   └── clean_teams.py
+│       ├── features/       # feature engineering
+│       │   ├── aggregate_team_season.py
+│       │   └── rookies.py
+│       └── utils/
+├── notebooks/              # exploratory analysis & baselines
+├── requirements.txt
+├── Makefile                # pipeline automation
+└── README.md
+````
 
-These objectives will guide our analysis and model development throughout the project.
+---
 
-## Dataset
+## Installation
 
-The dataset includes:
-- Player statistics
-- Team performance metrics
-- Coaching history
-- Game results
-- Award recipients
+```bash
+# clone repository
+git clone https://github.com/<your-user>/AC.git
+cd AC
 
-## Students
+# create environment
+python3 -m venv venv
+source venv/bin/activate
 
-- Tomás Oliveira - up202208415
-- Lucas Greco - up202208296
-
-## Próximos passos
-
-Seguem-se os próximos passos recomendados para avançar com a modelagem da classificação da regular season (explicado em português):
-
-- 1) Preparar o dataset por equipa-época (team-season)
-	- Agregar os resultados dos jogos da época regular por equipa: vitórias, derrotas, pontos marcados/sofridos, possessions (se disponíveis), diferença de pontos, estatísticas de ataque/defesa e splits casa/fora.
-	- Calcular janelas temporais/forma (por exemplo % de vitórias nas últimas 5/10 partidas).
-
-- 2) Enriquecer com features de roster e treinador
-	- Fazer merge com os ficheiros limpos de `players` e `teams` para obter idade média do plantel, experiência média, minutos médios, mudanças de roster e dados do treinador (tenure, experiência).
-
-- 3) Definir o rótulo (target)
-	- Rótulo primário: número de vitórias da regular season por equipa (regressão). Alternativa: rank final dentro da conferência (ordenação/learning-to-rank).
-
-- 4) Prevenir data leakage e validação temporal
-	- Usar apenas informação disponível até o fim da época regular para cada season.
-	- Validar com split temporal (train em anos anteriores, validar no ano seguinte) ou leave-one-season-out.
-
-- 5) Baselines e modelos
-	- Baselines simples: prever vitórias igual à época anterior ou média móvel.
-	- Modelos: regressão linear, Random Forest, LightGBM/XGBoost. Para ordenação direta, considerar LightGBM com objetivo de ranking.
-
-- 6) Métricas de avaliação
-	- Para ordenação: Spearman rho, Kendall tau, nDCG@K (importante para top-K que qualificam aos playoffs).
-	- Para previsões de vitórias: RMSE/MAE.
-
-- 7) Pipeline mínimo sugerido (arquitectura)
-	- scripts/aggregate_team_season.py  -> produz `data_processing/team_season.csv`
-	- notebooks/analysis.ipynb         -> exploração, features, validação
-	- notebooks/baseline.ipynb         -> baseline (ex.: LightGBM para prever vitórias) e avaliação (Spearman/nDCG)
-
-Comandos úteis (PowerShell) para repetir a limpeza que já foi feita:
-
-```powershell
-# executar limpeza de jogadores e equipas (já existem em `data_cleaning`)
-python .\data_cleaning\clean_players.py
-python .\data_cleaning\clean_teams.py
-
-# ficheiros gerados (saída):
-# data_cleaning_output\players_cleaned.csv
-# data_cleaning_output\teams_cleaned.csv
+# install dependencies
+pip install -r requirements.txt
 ```
 
-Quer que eu gere o script de agregação `scripts/aggregate_team_season.py` e um notebook com um baseline (LightGBM + métricas Spearman/nDCG)? Posso criar os ficheiros e correr um teste rápido usando os dados de treino existentes.
+---
+
+## Pipeline Usage
+
+Everything is automated via the `Makefile`.
+
+<details>
+<summary><b>1. Clean Data</b></summary>
+
+```bash
+make clean_players
+make clean_teams
+```
+
+Generated:
+
+* `data/processed/players_cleaned.csv`
+* `data/processed/teams_cleaned.csv`
+
+</details>
+
+<details>
+<summary><b>2. Feature Engineering</b></summary>
+
+```bash
+make team_season   # aggregates team-level features
+make rookies       # detects rookies & creates features
+```
+
+Generated:
+
+* `data/processed/team_season.csv`
+* `data/processed/team_rookie_features.csv`
+
+</details>
+
+<details>
+<summary><b>3. Analysis</b></summary>
+
+```bash
+make analyze_raw       # analysis using raw data
+make analyze_cleaned   # analysis using cleaned data
+```
+
+Generated:
+
+* Figures → `reports/figures/{raw|cleaned}/`
+* Tables  → `reports/tables/{raw|cleaned}/`
+
+</details>
+
+<details>
+<summary><b>4. Run Full Pipeline</b></summary>
+
+```bash
+make all
+```
+
+This will:
+`clean_players → clean_teams → team_season → rookies → analyze_cleaned`
+
+</details>
+
+---
+
+## Quick Visual Check
+
+To preview the reports structure:
+
+```bash
+make reports_tree
+```
+
+---
+
+## Design Philosophy
+
+* **Separation of concerns**
+  Cleaning, feature engineering, and analysis live in their own modules.
+
+* **Reproducibility**
+  All steps are reproducible via `Makefile`.
+
+* **Dual reports**
+  Every analysis is produced for both **raw** and **cleaned** data, for comparison.
+
+---
+
+## Roadmap
+
+* Add predictive modeling (ranking, coach changes, awards forecasts).
+* Integrate notebooks → `notebooks/baseline.ipynb` for ML baselines.
+* Continuous validation with leave-one-season-out strategy.
+
+---
+
+## Maintainers
+
+* Tomás Oliveira — up202208415
+* Lucas Greco — up202208296
+
+
+
+

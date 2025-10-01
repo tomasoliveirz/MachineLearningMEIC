@@ -2,6 +2,6 @@ WNBA DATA ANALYSIS REPORT
 ========================================
 
 Awards: 95 records
-Players: 893 records
 Player_stats: 1,876 records
+Players: 893 records
 Teams: 142 records

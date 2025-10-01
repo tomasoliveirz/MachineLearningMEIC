@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+from pathlib import Path
+import pandas as pd
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[3]
+RAW_DIR = ROOT / "data" / "raw"
+PROC_DIR = ROOT / "data" / "processed"
+PROC_DIR.mkdir(parents=True, exist_ok=True)
+
+def _load_players():
+    # prefer cleaned players if existir, para usar college normalizado
+    p_clean = PROC_DIR / "players_cleaned.csv"
+    p_raw = RAW_DIR / "players.csv"
+    if p_clean.exists():
+        return pd.read_csv(p_clean)
+    elif p_raw.exists():
+        return pd.read_csv(p_raw)
+    else:
+        raise FileNotFoundError("players.csv não encontrado em data/processed nem data/raw")
+
+def _load_teams():
+    # opcional: para anexar 'name' ao tmID (se disponível)
+    t_clean = PROC_DIR / "teams_cleaned.csv"
+    t_raw = RAW_DIR / "teams.csv"
+    if t_clean.exists():
+        return pd.read_csv(t_clean)
+    elif t_raw.exists():
+        return pd.read_csv(t_raw)
+    else:
+        return None
+
+def _load_players_teams():
+    pt = RAW_DIR / "players_teams.csv"
+    if not pt.exists():
+        raise FileNotFoundError("players_teams.csv não encontrado em data/raw")
+    return pd.read_csv(pt)
+
+def _load_team_season():
+    ts = PROC_DIR / "team_season.csv"
+    return pd.read_csv(ts) if ts.exists() else None
+
+def _label_rookies(players_teams: pd.DataFrame) -> pd.DataFrame:
+    df = players_teams.copy()
+    df["year"] = pd.to_numeric(df["year"], errors="coerce")
+    # rookie_year por jogador
+    rookie_year = df.groupby("playerID", dropna=False)["year"].min().rename("rookie_year")
+    df = df.merge(rookie_year, on="playerID", how="left")
+    df["is_rookie"] = (df["year"] == df["rookie_year"]).astype(int)
+
+    # consolidar por jogador-ano-equipa (somar stints)
+    for c in ["minutes","points"]:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    agg = (df.groupby(["playerID","year","tmID"], dropna=False)[["minutes","points","is_rookie"]]
+             .sum(min_count=1).reset_index())
+    agg["is_rookie"] = (agg["is_rookie"] > 0).astype(int)
+    return agg, rookie_year.reset_index()
+
+def _rookie_origin(players: pd.DataFrame) -> pd.Series:
+    col = "college"
+    if col not in players.columns:
+        return pd.Series(index=players.index, dtype="object")
+    s = players[col].astype(str).str.strip().str.lower()
+    is_unknown = s.isna() | s.eq("nan") | s.eq("unknown") | s.eq("")
+    return np.where(is_unknown, "non_ncaa", "ncaa")
+
+def _team_rookie_features(pst: pd.DataFrame, players: pd.DataFrame) -> pd.DataFrame:
+    # origem rookie por playerID (via players.csv)
+    players = players.copy()
+    players["playerID"] = players.get("bioID", players.get("playerID"))
+    origin_map = dict(zip(players["playerID"], _rookie_origin(players)))
+    pst["rookie_origin"] = pst["playerID"].map(origin_map)
+
+    # totais equipa
+    g_all = pst.groupby(["tmID","year"], dropna=False)
+    team_tot = g_all[["minutes","points"]].sum(min_count=1).rename(
+        columns={"minutes":"team_minutes","points":"team_points"}
+    )
+
+    # rookies (qualquer origem)
+    r_all = pst[pst["is_rookie"] == 1]
+    g_r = r_all.groupby(["tmID","year"], dropna=False)
+    rook_tot = g_r[["minutes","points"]].sum(min_count=1).rename(
+        columns={"minutes":"rookie_minutes","points":"rookie_points"}
+    )
+    rook_cnt = g_r.size().rename("rookie_count")
+
+    # rookies por origem
+    def bucket(origin):
+        r = r_all[r_all["rookie_origin"] == origin]
+        g = r.groupby(["tmID","year"], dropna=False)
+        tot = g[["minutes","points"]].sum(min_count=1)
+        cnt = g.size()
+        return tot.rename(columns={"minutes":f"{origin}_rookie_minutes",
+                                   "points":f"{origin}_rookie_points"}), \
+               cnt.rename(f"{origin}_rookie_count")
+
+    ncaa_tot, ncaa_cnt = bucket("ncaa")
+    non_tot, non_cnt = bucket("non_ncaa")
+
+    feats = (team_tot.join(rook_tot, how="left")
+                       .join(rook_cnt, how="left")
+                       .join(ncaa_tot, how="left")
+                       .join(ncaa_cnt, how="left")
+                       .join(non_tot, how="left")
+                       .join(non_cnt, how="left")).reset_index()
+
+    for c in ["rookie_minutes","rookie_points","rookie_count",
+              "ncaa_rookie_minutes","ncaa_rookie_points","ncaa_rookie_count",
+              "non_ncaa_rookie_minutes","non_ncaa_rookie_points","non_ncaa_rookie_count"]:
+        if c in feats.columns:
+            feats[c] = feats[c].fillna(0)
+
+    feats["rookie_min_share"] = feats["rookie_minutes"] / feats["team_minutes"].replace(0, np.nan)
+    feats["rookie_pts_share"] = feats["rookie_points"] / feats["team_points"].replace(0, np.nan)
+    feats["ncaa_rookie_min_share"] = feats["ncaa_rookie_minutes"] / feats["team_minutes"].replace(0, np.nan)
+    feats["non_ncaa_rookie_min_share"] = feats["non_ncaa_rookie_minutes"] / feats["team_minutes"].replace(0, np.nan)
+
+    return feats
+
+def _attach_team_names(feats: pd.DataFrame, teams: pd.DataFrame) -> pd.DataFrame:
+    if teams is None:
+        return feats
+    cols = [c for c in ["tmID","year","name"] if c in teams.columns]
+    if not {"tmID","year"}.issubset(cols):
+        return feats
+    names = teams[cols].drop_duplicates()
+    return feats.merge(names, on=["tmID","year"], how="left")
+
+def _attach_team_form(feats: pd.DataFrame) -> pd.DataFrame:
+    ts = _load_team_season()
+    if ts is None:
+        return feats
+    keep = [c for c in ["tmID","year","season_win_pct","prev_season_win_pct_1",
+                        "prev_season_win_pct_3","prev_season_win_pct_5",
+                        "win_pct_change_from_prev"] if c in ts.columns]
+    return feats.merge(ts[keep], on=["tmID","year"], how="left")
+
+def main():
+    players = _load_players()
+    teams = _load_teams()
+    pt = _load_players_teams()
+
+    pst, player_rookie = _label_rookies(pt)
+    feats = _team_rookie_features(pst, players)
+    feats = _attach_team_names(feats, teams)
+    feats = _attach_team_form(feats)
+
+    feats.to_csv(PROC_DIR / "team_rookie_features.csv", index=False)
+    player_rookie.rename(columns={"rookie_year":"year"}).to_csv(PROC_DIR / "player_rookie_year.csv", index=False)
+
+if __name__ == "__main__":
+    main()
