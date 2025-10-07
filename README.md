@@ -162,6 +162,15 @@ make reports_tree
 * Integrate notebooks → `notebooks/baseline.ipynb` for ML baselines.
 * Continuous validation with leave-one-season-out strategy.
 
+# Aula q o lucao foi
+- A temporada 10 é utilizada como conjunto de teste.
+- Considerar apenas o nome do time, os jogadores que iniciaram a temporada e o treinador; descartar as demais informações.
+- Identificar jogadores novos (rookies) na temporada de teste - nao é possivel calcular a performance deles com base na temporada anterior. - ao invez de dar nota 0, usar a media dos rookies das temporadas anteriores
+- Calcular a média de performance dos jogadores para a temporada de teste com base nos dados das temporadas anteriores.
+- A média simples das performances pode ser distorcida por jogadores com poucos minutos em campo.
+- Para avaliar a performance do time, recomenda-se calcular uma média ponderada das performances dos jogadores, utilizando como peso o número de jogos (ou minutos jogados) de cada atleta.
+- Coach vai ter menos importancia
+
 ---
 
 ## Maintainers
