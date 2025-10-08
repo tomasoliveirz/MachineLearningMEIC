@@ -14,8 +14,6 @@ def is_rookie(player_stats: pd.DataFrame) -> pd.Series:
     Não considera rookies jogadores cuja primeira temporada é a mais antiga do dataset,
     pois não há dados anteriores para comparação.
 
-    Requisitos mínimos das colunas no DataFrame de entrada: 'bioID', 'year'.
-
     Retorno: pd.Series index-alinhada a `player_stats` com valores True/False.
     """
 
@@ -24,7 +22,6 @@ def is_rookie(player_stats: pd.DataFrame) -> pd.Series:
 
     df = player_stats[['bioID', 'year']].copy()
     min_year = df['year'].min()
-    # Para cada jogador, marca True apenas na primeira ocorrência (menor ano) e se não for o menor ano do dataset
     rookie_mask = (df.groupby('bioID')['year'].transform('min') == df['year']) & (df['year'] > min_year)
     return rookie_mask.reindex(player_stats.index, fill_value=False)
 
@@ -68,7 +65,7 @@ def calculate_rookies_perfomance_per_team_previous_seasons(
     df = player_stats.copy()
     df['is_rookie'] = is_rookie(df)
 
-    # Média global dos rookies (para fallback)
+    # Avg global data of rookies for fallback
     rookies_global_mean = df.loc[df['is_rookie'], performance_col].mean(skipna=True)
 
     # If performance_col contains mostly NaNs for rookies (or is absent), compute a per36-like metric from raw stats
@@ -107,9 +104,6 @@ def calculate_rookies_perfomance_per_team_previous_seasons(
         if not pd.isna(rookies_per36_mean):
             rookies_global_mean = rookies_per36_mean
 
-    # Para lookup rápido: rookies por (tmID, year)
-    # compute rookie means per (tmID, year). Prefer provided performance_col; if it's zero/NaN for rookies,
-    # fallback to per36 values computed above.
     rookies_subset = df.loc[df['is_rookie']].copy()
     # if performance values for rookies are missing/zero, try to replace with per36
     if 'per36' in locals():
@@ -123,14 +117,14 @@ def calculate_rookies_perfomance_per_team_previous_seasons(
     )
     rookies_map = rookies_by_team_year.to_dict()
 
-    # Precompute para cada (tmID, year) a média ponderada dos rookies das seasons anteriores
+    # Precompute the weighted averages for each (tmID, year) in the dataset
     team_years = df[['tmID', 'year']].drop_duplicates().values
     prev_rookie_mean_cache: Dict[Tuple[str, int], float] = {}
 
     for tm, year in team_years:
         vals = []
         weights = []
-        for idx, y in enumerate(range(year - seasons_back, year)[::-1]):  # mais recente primeiro
+        for idx, y in enumerate(range(year - seasons_back, year)[::-1]):  # more recent first
             key = (tm, y)
             if key in rookies_map and not pd.isna(rookies_map[key]):
                 vals.append(rookies_map[key])
@@ -149,7 +143,7 @@ def calculate_rookies_perfomance_per_team_previous_seasons(
                 except Exception:
                     prev_rookie_mean_cache[(tm, year)] = float(rookies_global_mean) if not pd.isna(rookies_global_mean) else 0.0
 
-    # Assign para cada linha
+    # Assign for each row
     result = pd.Series(index=df.index, dtype=float)
     for idx, row in df[['tmID', 'year']].iterrows():
         key = (row['tmID'], int(row['year']))
@@ -164,40 +158,38 @@ def calculate_player_performance(
     decay: float = 0.6,
     weight_by_minutes: bool = True,
     rookie_seasons_back: int = 3,
-    rookie_fillna: str = 'global_mean',
-) -> pd.DataFrame:
+    rookie_fillna: str = 'global_mean',) -> pd.DataFrame:
 
-    """Calcule uma pontuação de performance por jogador utilizando o histórico de temporadas anteriores.
+    """Calcule a performance por jogador usando histórico de temporadas e regras explícitas para rookies.
+    Comportamento detalhado:
+    - Para cada jogador/temporada (linha com year = Y), a performance é calculada a partir da temporada atual (Y) e das até
+        `seasons_back` temporadas anteriores (anos < Y) do mesmo jogador, exceto para rookies que usam apenas a temporada atual.
+    - Temporadas são agregadas com pesos temporais exponenciais: peso = 1.0 para a temporada atual, e decay ** (age + 1) para anteriores,
+        onde age=0 é a temporada imediatamente anterior. Se `weight_by_minutes=True`, o peso de cada temporada
+        também é multiplicado pelos minutos jogados nessa temporada (minutos maiores aumentam influência).
+    - Cada temporada contribui com um valor per-36 (per36) gerado a partir de uma combinação linear das estatísticas
+        (pesos internos: pts=1.0, reb=0.7, ast=0.7, stl=1.2, blk=1.2, tov=-0.7). O per36 é calculado como
+        raw_score / minutes * 36; minutos faltantes são tratados com as colunas 'mp' ou 'g' quando possível.
+    - Aplica-se um fator de time (team factor) multiplicativo se 'team_pts' ou 'season_team_pts' estiver presente
+        (team_pts mediana usada como base).
 
-    Contrato:
-    - Entrada: `player_stats` DataFrame com, pelo menos, as colunas:
-        - 'bioID' (identificador do jogador) e 'year' (temporada/ano) para ordenar e agrupar
-        - 'tmID' (identificador do time) para calcular histórico de rookies por time
-        - estatísticas por-temporada: 'pts', 'trb' ou ('orb' e 'drb'), 'ast', 'stl', 'blk', 'tov', 'mp' (minutos), 'g' (games)
-        - opcionalmente colunas de time como 'team_pts' ou 'season_team_pts' se quiser incorporar força ofensiva do time
-    - Saída: o mesmo DataFrame com uma nova coluna 'performance' (float) que representa a performance estimada
-
-    Regras e escolhas de implementação:
-    - Para cada jogador e temporada atual (linha com ano Y), a performance é estimada a partir das até
-      `seasons_back` temporadas anteriores (anos < Y) do mesmo jogador.
-    - Temporadas anteriores são combinadas usando um decaimento exponencial: peso = decay ** idx,
-      onde idx=0 para a temporada imediatamente anterior, idx=1 para a anterior a essa, etc.
-      Assim, temporadas mais recentes têm peso maior.
-    - Cada temporada anterior contribui com uma métrica per-36 minutos (per36) calculada a partir de uma
-      combinação linear de estatísticas (pts, reb, ast, stl, blk, tov). Se `weight_by_minutes=True`, o peso
-      da temporada também é multiplicado pelo total de minutos daquela temporada para reduzir a influência
-      de temporadas com muito poucos minutos.
-    - Se não existirem temporadas anteriores (rookies), a função utiliza o histórico médio de performance
-      dos rookies do mesmo time em temporadas anteriores, calculado via calculate_rookies_perfomance_per_team_previous_seasons.
-    - A função é defensiva: colunas ausentes são tratadas como zeros e divisões por zero são evitadas.
+    Regras para rookies (casos específicos):
+    - Um jogador é considerado rookie quando a linha representa sua primeira aparição no DataFrame e essa
+        temporada não é a mais antiga do dataset (veja `is_rookie`).
+    - Se o rookie TIVER estatísticas de atividade na temporada atual (minutos > 0 ou jogos reportados),
+        sua performance é calculada a partir do per36 daquela temporada e recebe o fator de time.
+    - Se o rookie NÃO TIVER estatísticas de atividade (nenhum minuto/report de jogos), a função usa a média
+        histórica de rookies do MESMO time calculada por `calculate_rookies_perfomance_per_team_previous_seasons`.
+        Esse fallback usa `rookie_seasons_back`, `decay` e `rookie_fillna` para definir a média histórica.
 
     Parâmetros:
-    - seasons_back: quantas temporadas anteriores considerar por jogador (default 9)
-    - decay: fator de decaimento exponencial para pesos temporais (0 < decay < 1). Valores mais próximos de 1
-      dão mais peso para temporadas mais antigas; valores pequenos concentram peso nas temporadas muito recentes.
-    - weight_by_minutes: se True, multiplica o peso de cada temporada pelo total de minutos jogados nessa temporada.
-    - rookie_seasons_back: quantas temporadas anteriores considerar para calcular a média de rookies do time (default 3).
-    - rookie_fillna: estratégia de fallback quando não há histórico de rookies do time ('global_mean', 'zero', ou valor numérico).
+    - seasons_back (int): quantas temporadas anteriores considerar por jogador (default 9)
+    - decay (float): fator de decaimento temporal (0 < decay < 1)
+    - weight_by_minutes (bool): multiplicar pesos por minutos da temporada
+    - rookie_seasons_back (int): quantas temporadas anteriores do time considerar ao estimar rookies
+    - rookie_fillna (str|float): estratégia de preenchimento para rookies sem histórico ('global_mean', 'zero' ou float)
+    Retorno:
+    - DataFrame modificado com as colunas 'performance' (float, 3 casas decimais) e 'rookie' (bool).
     """
 
     df = player_stats.copy()
@@ -241,8 +233,8 @@ def calculate_player_performance(
         per36_col: str = '_per36',
         minutes_col: str = '_minutes',
     ) -> pd.Series:
-        """Compute for each row the weighted historical per36 using player history."""
-        # Precompute global mean for rookie fallback
+        """Compute for each row the weighted per36 using current and historical seasons, but only current for rookies."""
+        # Precompute global mean for fallback
         global_mean = df_local[per36_col].mean(skipna=True)
         out = pd.Series(index=df_local.index, dtype=float)
 
@@ -255,31 +247,37 @@ def calculate_player_performance(
 
             for i, idx in enumerate(g.index):
                 year_i = years[i]
-                prev_mask = years < year_i
-                prev_indices = [j for j, m in enumerate(prev_mask) if m]
-
-                if not prev_indices:
-                    # rookie (no previous seasons): leave as NaN so rookies can be handled separately
-                    out.at[idx] = np.nan
-                    continue
-
-                recent_prev = prev_indices[-seasons_back:][::-1]
+                prev_indices = [j for j in range(i) if years[j] < year_i]  # previous seasons
 
                 weights_list = []
                 values_list = []
-                for age, pi in enumerate(recent_prev):
-                    val = per36_vals[pi]
-                    mins = minutes_vals[pi]
-                    if np.isnan(val):
-                        continue
-                    w = (decay ** age)
+
+                # Always include current season
+                current_val = per36_vals[i]
+                current_mins = minutes_vals[i]
+                if not np.isnan(current_val):
+                    w = 1.0  # full weight for current season
                     if weight_by_minutes:
-                        w *= (mins if mins > 0 else 0.0)
+                        w *= (current_mins if current_mins > 0 else 0.0)
                     weights_list.append(w)
-                    values_list.append(val)
+                    values_list.append(current_val)
+
+                # Include previous seasons only if not rookie (i.e., if there are previous indices)
+                if prev_indices:  # not rookie
+                    recent_prev = prev_indices[-seasons_back:][::-1]
+                    for age, pi in enumerate(recent_prev):
+                        val = per36_vals[pi]
+                        mins = minutes_vals[pi]
+                        if np.isnan(val):
+                            continue
+                        w = (decay ** (age + 1))  # age+1 since current is 0
+                        if weight_by_minutes:
+                            w *= (mins if mins > 0 else 0.0)
+                        weights_list.append(w)
+                        values_list.append(val)
 
                 if not weights_list:
-                    # no valid previous-season per36 values: fallback to global mean
+                    # no valid values: fallback to global mean
                     out.at[idx] = global_mean if not np.isnan(global_mean) else 0.0
                 else:
                     weights_arr = np.array(weights_list, dtype=float)
@@ -304,7 +302,6 @@ def calculate_player_performance(
         final = perf_series * tf
         return final
 
-
     # Ensure year and bioID exist for grouping/sorting
     if 'year' not in df.columns or 'bioID' not in df.columns:
         # fallback: compute per-row per36 and return
@@ -315,34 +312,38 @@ def calculate_player_performance(
     # Compute per36 and minutes columns used by history
     df['_per36'], df['_minutes'] = _compute_per36_and_minutes(df)
 
-    # Compute player-history based performance
+    # Compute player-history based performance (now includes current season)
     perf_series = _compute_weighted_history(df, per36_col='_per36', minutes_col='_minutes')
 
     # Apply team-level factor if present
     final_perf = _apply_team_factor(df, perf_series)
 
-    # Now handle rookies: fill NaN values with team-specific rookie history
-    # First, we need to compute performance for non-rookies to have a baseline
+    # Now handle rookies: for those without activity in current season, fill with team-specific rookie history
     df['performance'] = final_perf.astype(float)
     
-    # Identify rookies (rows with NaN performance)
-    # also expose an explicit boolean 'rookie' column for the caller
+    # Identify rookies
     df['rookie'] = is_rookie(df)
 
-    rookie_mask = df['performance'].isna()
-    
+    rookie_mask = df['rookie']
+
     if rookie_mask.any():
-        # Calculate team-specific rookie performance using historical data
-        rookie_perf_series = calculate_rookies_perfomance_per_team_previous_seasons(
-            player_stats=df,
-            performance_col='performance',
-            seasons_back=rookie_seasons_back,
-            decay=decay,
-            fillna=rookie_fillna,
-        )
-        
-        # Fill rookie performances with team-specific historical averages
-        df.loc[rookie_mask, 'performance'] = rookie_perf_series[rookie_mask]
+        per36 = df['_per36']
+        minutes = df['_minutes']
+
+        # define mask for rookies that have at least some minutes or games recorded in the current season
+        has_activity = (~minutes.isna()) & (minutes > 0)
+
+        # For rookies without activity, use historical per-team rookie averages
+        remaining_rookies = rookie_mask & (~has_activity)
+        if remaining_rookies.any():
+            rookie_perf_series = calculate_rookies_perfomance_per_team_previous_seasons(
+                player_stats=df,
+                performance_col='performance',
+                seasons_back=rookie_seasons_back,
+                decay=decay,
+                fillna=rookie_fillna,
+            )
+            df.loc[remaining_rookies, 'performance'] = rookie_perf_series[remaining_rookies]
     
     # Round to 3 decimals
     df['performance'] = df['performance'].round(3)

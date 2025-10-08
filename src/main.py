@@ -1,15 +1,33 @@
 import time
 import pandas as pd
 from pathlib import Path
-from player_perfomance import (
+from contextlib import redirect_stdout
+from datetime import datetime
+from player_performance import (
     calculate_player_performance,
     calculate_rookies_perfomance_per_team_previous_seasons,
     is_rookie,
 )
-
+from model import prepare_train_test_data, train_and_evaluate_model
 
 def main():
-    base = Path(__file__).resolve().parent.parent.parent
+    # Create timestamped output file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = Path(__file__).resolve().parent.parent / 'reports'
+    output_dir.mkdir(exist_ok=True)
+    output_file = output_dir / f'complete_analysis_{timestamp}.txt'
+    
+    print(f"Saving complete analysis to: {output_file}")
+    
+    with open(output_file, 'w', encoding='utf-8') as f:
+        with redirect_stdout(f):
+            _run_complete_analysis()
+    
+    print(f"\n✅ Complete analysis saved to: {output_file}")
+
+
+def _run_complete_analysis():
+    base = Path(__file__).resolve().parent.parent
     raw_path = base / 'data' / 'raw' / 'players_teams.csv'
     raw = pd.read_csv(raw_path)
 
@@ -27,9 +45,7 @@ def main():
         'tmID': 'tmID'
     }, inplace=True)
 
-
     sample = raw[['bioID', 'year', 'tmID', 'mp', 'pts', 'trb', 'ast', 'stl', 'blk', 'tov']].copy()
-
 
     # detect rookies before performance calculation
     rookie_mask_before = is_rookie(sample)
@@ -91,13 +107,35 @@ def main():
         print(by_team.head(10).to_string())
         print()
 
-
     # Final short table
     print("Resumo final (primeiras 10 linhas):")
     cols_final = ['bioID', 'year', 'tmID', 'mp', 'pts', 'performance', 'rookie']
     existing_final = [c for c in cols_final if c in res.columns]
     print(res[existing_final].head(10).to_string(index=False))
     print(f"\nTotal de linhas processadas: {len(res)}\n")
+
+    # Execute model
+    print("="*80)
+    print("EXECUTANDO MODELO DE PREDIÇÃO DE RANKING")
+    print("="*80)
+    
+    # Carregar dados das equipes
+    teams_path = base / 'data' / 'processed' / 'team_season.csv'
+    teams_data = pd.read_csv(teams_path)
+    
+    # Preparar dados de treino/teste
+    X_train, X_test, y_train, y_test, test_data = prepare_train_test_data(
+        player_stats=res,  # res é o DataFrame com performance calculada
+        teams_data=teams_data,
+        test_season=10,
+        seasons_back=3,
+        decay=0.7
+    )
+    
+    # Treinar e avaliar modelo
+    model_results = train_and_evaluate_model(X_train, X_test, y_train, y_test, test_data)
+    print("\nModelo executado com sucesso!")
+
 
 if __name__ == '__main__':
     main()
