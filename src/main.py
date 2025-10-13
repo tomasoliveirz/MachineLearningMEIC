@@ -5,17 +5,16 @@ from contextlib import redirect_stdout
 from datetime import datetime
 from player_performance import (
     calculate_player_performance,
-    calculate_rookies_perfomance_per_team_previous_seasons,
     is_rookie,
 )
 from model import prepare_train_test_data, train_and_evaluate_model
 
 def main():
     # Create timestamped output file
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("mes_%m_dia_%d_hora_%H_min_%M")
     output_dir = Path(__file__).resolve().parent.parent / 'reports'
     output_dir.mkdir(exist_ok=True)
-    output_file = output_dir / f'complete_analysis_{timestamp}.txt'
+    output_file = output_dir / f'Analysis_{timestamp}.txt'
     
     print(f"Saving complete analysis to: {output_file}")
     
@@ -53,7 +52,13 @@ def _run_complete_analysis():
 
     # compute performance (uses seasons in the DataFrame)
     start = time.time()
-    res = calculate_player_performance(sample, seasons_back=3, decay=0.7)
+    res = calculate_player_performance(
+        sample, 
+        seasons_back=3, 
+        decay=0.7,
+        rookie_min_minutes=100.0,  # Threshold: rookies need at least 100 minutes to avoid heavy shrinkage
+        rookie_prior_strength=3600.0  # Prior strength: equivalent to 3600 minutes of average performance
+    )
     duration = time.time() - start
 
     perf = res['performance']
@@ -108,34 +113,36 @@ def _run_complete_analysis():
         print()
 
     # Final short table
-    print("Resumo final (primeiras 10 linhas):")
+    print("Top 100 jogadores com maiores performances:")
     cols_final = ['bioID', 'year', 'tmID', 'mp', 'pts', 'performance', 'rookie']
     existing_final = [c for c in cols_final if c in res.columns]
-    print(res[existing_final].head(10).to_string(index=False))
+    print(res[existing_final].sort_values('performance', ascending=False).head(100).to_string(index=False))
     print(f"\nTotal de linhas processadas: {len(res)}\n")
 
-    # Execute model
-    print("="*80)
-    print("EXECUTANDO MODELO DE PREDIÇÃO DE RANKING")
-    print("="*80)
-    
-    # Carregar dados das equipes
-    teams_path = base / 'data' / 'processed' / 'team_season.csv'
-    teams_data = pd.read_csv(teams_path)
-    
-    # Preparar dados de treino/teste
-    X_train, X_test, y_train, y_test, test_data = prepare_train_test_data(
-        player_stats=res,  # res é o DataFrame com performance calculada
-        teams_data=teams_data,
-        test_season=10,
-        seasons_back=3,
-        decay=0.7
-    )
-    
-    # Treinar e avaliar modelo
-    model_results = train_and_evaluate_model(X_train, X_test, y_train, y_test, test_data)
-    print("\nModelo executado com sucesso!")
-
+#  #Execute model
+#  print("="*80)
+#  print("EXECUTANDO MODELO DE PREDIÇÃO DE RANKING")
+#  print("="*80)
+#  
+#  # Carregar dados das equipes
+#  teams_path = base / 'data' / 'processed' / 'team_season.csv'
+#  teams_data = pd.read_csv(teams_path)
+#  
+#  # Preparar dados de treino/teste
+#  X_train, X_test, y_train, y_test, test_data = prepare_train_test_data(
+#      player_stats=res,  # res é o DataFrame com performance calculada
+#      teams_data=teams_data,
+#      test_season=10,
+#      seasons_back=3,
+#      decay=0.7
+#  )
+#  
+#  # Treinar e avaliar modelo
+#  model_results = train_and_evaluate_model(X_train, X_test, y_train, y_test, test_data)
+#  print("\nModelo executado com sucesso!")
+#  
+#  print("\n=== Resultados do Modelo ===")
+#  print(model_results)
 
 if __name__ == '__main__':
     main()

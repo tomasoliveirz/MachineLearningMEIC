@@ -160,7 +160,8 @@ def prepare_train_test_data(
         decay=decay,
         weight_by_minutes=True,
         rookie_seasons_back=3,
-        rookie_fillna='global_mean'
+        rookie_min_minutes=100.0,
+        rookie_prior_strength=3600.0
     )
     
     print(f"  - Total de jogadores processados: {len(player_perf)}")

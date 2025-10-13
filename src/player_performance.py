@@ -158,9 +158,9 @@ def calculate_player_performance(
     decay: float = 0.6,
     weight_by_minutes: bool = True,
     rookie_seasons_back: int = 3,
-    rookie_fillna: str = 'global_mean',) -> pd.DataFrame:
-
-    """Calcule a performance por jogador usando histórico de temporadas e regras explícitas para rookies.
+    rookie_min_minutes: float = 100.0,
+    rookie_prior_strength: float = 3600.0) -> pd.DataFrame:
+    """Calcula a performance por jogador usando histórico de temporadas e regras explícitas para rookies.
     Comportamento detalhado:
     - Para cada jogador/temporada (linha com year = Y), a performance é calculada a partir da temporada atual (Y) e das até
         `seasons_back` temporadas anteriores (anos < Y) do mesmo jogador, exceto para rookies que usam apenas a temporada atual.
@@ -176,18 +176,22 @@ def calculate_player_performance(
     Regras para rookies (casos específicos):
     - Um jogador é considerado rookie quando a linha representa sua primeira aparição no DataFrame e essa
         temporada não é a mais antiga do dataset (veja `is_rookie`).
-    - Se o rookie TIVER estatísticas de atividade na temporada atual (minutos > 0 ou jogos reportados),
-        sua performance é calculada a partir do per36 daquela temporada e recebe o fator de time.
-    - Se o rookie NÃO TIVER estatísticas de atividade (nenhum minuto/report de jogos), a função usa a média
-        histórica de rookies do MESMO time calculada por `calculate_rookies_perfomance_per_team_previous_seasons`.
-        Esse fallback usa `rookie_seasons_back`, `decay` e `rookie_fillna` para definir a média histórica.
+    - Se rookie TEM >= rookie_min_minutes (padrão: 100), usa per36 observado (confiável).
+    - Se rookie TEM < rookie_min_minutes, aplica SHRINKAGE (Empirical Bayes):
+        * performance = (w_obs * per36_observado + w_prior * prior_time) / (w_obs + w_prior)
+        * w_obs = minutos / 36 (quanto mais minutos, mais confiança na observação)
+        * w_prior = rookie_prior_strength / 36 (força do prior, padrão: 100 "games" de 36min)
+        * prior_time = média histórica dos rookies do mesmo time
+    - Se rookie NÃO TEM minutos (0), usa 100% o prior do time.
 
     Parâmetros:
     - seasons_back (int): quantas temporadas anteriores considerar por jogador (default 9)
     - decay (float): fator de decaimento temporal (0 < decay < 1)
     - weight_by_minutes (bool): multiplicar pesos por minutos da temporada
     - rookie_seasons_back (int): quantas temporadas anteriores do time considerar ao estimar rookies
-    - rookie_fillna (str|float): estratégia de preenchimento para rookies sem histórico ('global_mean', 'zero' ou float)
+    - rookie_min_minutes (float): threshold de minutos para confiar totalmente no per36 do rookie (padrão: 100)
+    - rookie_prior_strength (float): força do prior em "minutos equivalentes" para shrinkage (padrão: 3600 = 100 jogos)
+    
     Retorno:
     - DataFrame modificado com as colunas 'performance' (float, 3 casas decimais) e 'rookie' (bool).
     """
@@ -224,7 +228,12 @@ def calculate_player_performance(
         raw = _compute_raw_score(df_local)
         minutes = _safe_col(df_local, 'mp').where(_safe_col(df_local, 'mp') > 0, _safe_col(df_local, 'g'))
         minutes = minutes.replace({0: np.nan})
-        per36_local = raw.divide(minutes).multiply(36)
+        MIN_EFFECTIVE_MINUTES = 12.0
+        minutes_for_per36 = minutes.copy()
+        mask_small = minutes_for_per36.notna() & (minutes_for_per36 < MIN_EFFECTIVE_MINUTES)
+        minutes_for_per36.loc[mask_small] = MIN_EFFECTIVE_MINUTES
+    
+        per36_local = raw.divide(minutes_for_per36).multiply(36)
         minutes_total = _safe_col(df_local, 'mp').fillna(0)
         return per36_local, minutes_total
 
@@ -312,39 +321,102 @@ def calculate_player_performance(
     # Compute per36 and minutes columns used by history
     df['_per36'], df['_minutes'] = _compute_per36_and_minutes(df)
 
+    # Identify rookies before calculating performance
+    df['rookie'] = is_rookie(df)
+    
+    # Calculate historical prior for rookies using per36 
+    # Create temporary column '_per36_for_prior' to calculate the prior
+    df['_per36_for_prior'] = df['_per36'].fillna(df['_per36'].mean())
+    
+    rookie_prior_series = calculate_rookies_perfomance_per_team_previous_seasons(
+        player_stats=df,
+        performance_col='_per36_for_prior',  # USE PER36, NOT performance!
+        seasons_back=rookie_seasons_back,
+        decay=decay,
+        fillna='global_mean',
+    )
+    
+    # Calculate global mean of per36 for fallback in shrinkage
+    global_per36_mean = df['_per36'].mean(skipna=True)
     # Compute player-history based performance (now includes current season)
     perf_series = _compute_weighted_history(df, per36_col='_per36', minutes_col='_minutes')
-
     # Apply team-level factor if present
     final_perf = _apply_team_factor(df, perf_series)
-
-    # Now handle rookies: for those without activity in current season, fill with team-specific rookie history
     df['performance'] = final_perf.astype(float)
     
-    # Identify rookies
-    df['rookie'] = is_rookie(df)
-
+    per36 = df['_per36']
+    minutes = df['_minutes']
     rookie_mask = df['rookie']
 
-    if rookie_mask.any():
-        per36 = df['_per36']
-        minutes = df['_minutes']
-
-        # define mask for rookies that have at least some minutes or games recorded in the current season
-        has_activity = (~minutes.isna()) & (minutes > 0)
-
-        # For rookies without activity, use historical per-team rookie averages
-        remaining_rookies = rookie_mask & (~has_activity)
-        if remaining_rookies.any():
-            rookie_perf_series = calculate_rookies_perfomance_per_team_previous_seasons(
-                player_stats=df,
-                performance_col='performance',
-                seasons_back=rookie_seasons_back,
-                decay=decay,
-                fillna=rookie_fillna,
-            )
-            df.loc[remaining_rookies, 'performance'] = rookie_perf_series[remaining_rookies]
+    def apply_shrinkage(obs_per36, obs_minutes, prior_mean, is_rookie_flag):
+        """
+        Aplica shrinkage baseado nos minutos jogados.
+        - Se minutos >= threshold: usa per36 observado
+        - Se minutos < threshold: mistura per36 com prior
+        - Se minutos == 0 ou per36 inválido: usa 100% prior
     
+        Correções:
+        - Impõe um mínimo de minutos para considerar "confiável" (ao menos 36min).
+        - Mantém reforço do prior para casos extremamente pequenos, evitando influência descontrolada do per36 calculado em poucos minutos.
+        """
+        # Non-trustable observed per36
+        if pd.isna(obs_per36) or obs_minutes == 0:
+            return prior_mean
+    
+        # Defining threshold for trusting observed per36
+        MIN_TRUST_MINUTES = 36.0
+        if is_rookie_flag:
+            threshold = max(rookie_min_minutes, MIN_TRUST_MINUTES)
+        else:
+            threshold = max(rookie_min_minutes * 2, MIN_TRUST_MINUTES)
+    
+        if obs_minutes >= threshold:
+            return obs_per36
+    
+        # Shrinkage calculation
+        w_obs = max(float(obs_minutes), 0.0) / 36.0
+        w_prior = rookie_prior_strength / 36.0  # prior strength in "games" of 36min
+    
+        # For extremely low minutes, increase prior weight to avoid overfitting
+        if is_rookie_flag and obs_minutes < 50:
+            w_prior *= 5.0  # maintains existing behavior
+        if is_rookie_flag and obs_minutes < 10:
+            # extremely small cases: even stronger prior
+            w_prior *= 2.0
+    
+        denom = (w_obs + w_prior)
+        if denom <= 0:
+            return prior_mean
+    
+        blended = (w_obs * obs_per36 + w_prior * prior_mean) / denom
+    
+        # CAP: rookies with very few minutes should not exceed a reasonable max
+        if is_rookie_flag and obs_minutes < 20:
+            cap = global_per36_mean + 1.5 * df['_per36'].std(skipna=True)
+            blended = min(blended, cap)
+    
+        return blended
+
+    # Apply shrinkage for all players with low minutes
+    for idx in df.index:
+        obs_per36_val = per36.at[idx]
+        obs_minutes_val = minutes.at[idx]
+        is_rookie_player = rookie_mask.at[idx]
+        
+        # Determine prior mean
+        if is_rookie_player:
+            # Rookies: use team-based prior
+            prior_mean_val = rookie_prior_series.at[idx] if idx in rookie_prior_series.index else global_per36_mean
+        else:
+            # NNon-rookies: use global mean (fallback for players without history in year=1)
+            prior_mean_val = global_per36_mean
+
+        # Apply shrinkage only if has low minutes
+        if obs_minutes_val < rookie_min_minutes * 2:  # conservative threshold
+            df.at[idx, 'performance'] = apply_shrinkage(obs_per36_val, obs_minutes_val, prior_mean_val, is_rookie_player)
+    
+    # clean temporary prior column
+    df.drop(columns=['_per36_for_prior'], inplace=True, errors='ignore')
     # Round to 3 decimals
     df['performance'] = df['performance'].round(3)
 
