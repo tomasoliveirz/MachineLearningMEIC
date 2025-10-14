@@ -1,20 +1,20 @@
 === Player performance (amostra) ===
 Origem: C:\Users\gluca\OneDrive\Ambiente de Trabalho\Master FEUP\MachineLearningMEIC\data\raw\players_teams.csv
-Sample size: 1876  |  Execution time: 0.306s
+Sample size: 1876  |  Execution time: 0.180s
 
 Performance summary (all rows):
 count    1876.000000
-mean       17.915106
-std         3.958733
+mean       17.914386
+std         3.940330
 min         5.152000
-25%        15.593500
-50%        16.938000
-75%        19.860000
+25%        15.564250
+50%        16.934000
+75%        19.825000
 max        33.807000
 
 Rookies (identificados antes do cálculo):
 Rookies identificados: 356
-Rookies - performance mean: 16.409  |  std: 3.971
+Rookies - performance mean: 16.406  |  std: 3.872
 Top 5 rookies (por performance):
      bioID  year tmID   mp  pts  performance  rookie
 parkeca01w     9  LAS 1109  610       31.926    True
@@ -53,29 +53,29 @@ Performance por year (mean, count):
            mean  count
 year                  
 1     17.471351    208
-2     17.172683    208
-3     17.397078    217
-4     17.741922    180
-5     17.552545    167
-6     17.535326    178
-7     17.985156    180
-8     18.456399    173
-9     18.664825    200
-10    19.504576    165
+2     17.163981    208
+3     17.382171    217
+4     17.662272    180
+5     17.514844    167
+6     17.506264    178
+7     18.058028    180
+8     18.514769    173
+9     18.655155    200
+10    19.554394    165
 
 Resumo por time (top 10 por avg performance):
            mean  count
 tmID                  
-ATL   19.285556     27
-LAS   18.763114    132
-DET   18.259986    147
-PHO   18.236487    152
-SAC   18.235402    122
-CON   18.214477     88
-IND   18.006809    131
-MIN   17.976992    126
-WAS   17.963489    135
-UTA   17.915487     39
+ATL   19.393074     27
+LAS   18.813030    132
+CON   18.347500     88
+PHO   18.258145    152
+SAC   18.233410    122
+DET   18.187626    147
+MIN   18.031937    126
+IND   18.022206    131
+UTA   17.996308     39
+WAS   17.960741    135
 
 Top 100 jogadores com maiores performances:
      bioID  year tmID   mp  pts  performance  rookie

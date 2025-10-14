@@ -180,4 +180,8 @@ make reports_tree
 
 
 
+A PERFOMANCE PODE MUDAR COM A POSIÇÃO do jogador :O
+
+
+
 

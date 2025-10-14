@@ -1,0 +1,184 @@
+=== Player performance (amostra) ===
+Origem: C:\Users\gluca\OneDrive\Ambiente de Trabalho\Master FEUP\MachineLearningMEIC\data\raw\players_teams.csv
+Sample size: 1876  |  Execution time: 0.162s
+
+Performance summary (all rows):
+count    1876.000000
+mean       17.914386
+std         3.940330
+min         5.152000
+25%        15.564250
+50%        16.934000
+75%        19.825000
+max        33.807000
+
+Rookies (identificados antes do cálculo):
+Rookies identificados: 356
+Rookies - performance mean: 16.406  |  std: 3.872
+Top 5 rookies (por performance):
+     bioID  year tmID   mp  pts  performance  rookie
+parkeca01w     9  LAS 1109  610       31.926    True
+catchta01w     3  IND 1167  594       30.133    True
+mccouan01w    10  ATL  735  435       29.927    True
+bonnede01w    10  PHO  724  381       27.900    True
+wiggica01w     9  MIN  824  472       27.795    True
+
+Top 10 players (por performance):
+     bioID  year tmID   mp  pts  performance  rookie
+jacksla01w     8  SEA 1020  739       33.807   False
+jacksla01w     9  SEA  694  425       33.375   False
+tauradi01w    10  PHO  976  631       32.859   False
+jacksla01w    10  SEA  843  499       32.802   False
+tauradi01w     9  PHO 1083  820       32.070   False
+parkeca01w     9  LAS 1109  610       31.926    True
+jacksla01w     7  SEA  848  585       31.902   False
+leslili01w     7  LAS 1043  680       31.829   False
+griffyo01w     1  SAC 1026  523       31.684   False
+leslili01w     2  LAS 1033  606       31.616   False
+
+Bottom 10 players (por performance):
+     bioID  year tmID  mp  pts  performance  rookie
+mooreje01w     6  LAS 109    8        5.152    True
+derevje01w     6  CON 359   24        7.625   False
+smithch03w     2  SEA 589   58        8.065   False
+smithch03w     1  SEA 516   52        8.540   False
+lawsoed01w     6  HOU 114   25        8.811    True
+ payeka01w     1  MIN 408   56        8.894   False
+ hillec01w     1  CHA 213   39        9.228   False
+henniso01w     4  IND 290   24        9.392   False
+ nagyan01w     3  SAC 409   34        9.573   False
+cronika01w     7  CHI 134   24        9.591    True
+
+Performance por year (mean, count):
+           mean  count
+year                  
+1     17.471351    208
+2     17.163981    208
+3     17.382171    217
+4     17.662272    180
+5     17.514844    167
+6     17.506264    178
+7     18.058028    180
+8     18.514769    173
+9     18.655155    200
+10    19.554394    165
+
+Resumo por time (top 10 por avg performance):
+           mean  count
+tmID                  
+ATL   19.393074     27
+LAS   18.813030    132
+CON   18.347500     88
+PHO   18.258145    152
+SAC   18.233410    122
+DET   18.187626    147
+MIN   18.031937    126
+IND   18.022206    131
+UTA   17.996308     39
+WAS   17.960741    135
+
+Top 100 jogadores com maiores performances:
+     bioID  year tmID   mp  pts  performance  rookie
+jacksla01w     8  SEA 1020  739       33.807   False
+jacksla01w     9  SEA  694  425       33.375   False
+tauradi01w    10  PHO  976  631       32.859   False
+jacksla01w    10  SEA  843  499       32.802   False
+tauradi01w     9  PHO 1083  820       32.070   False
+parkeca01w     9  LAS 1109  610       31.926    True
+jacksla01w     7  SEA  848  585       31.902   False
+leslili01w     7  LAS 1043  680       31.829   False
+griffyo01w     1  SAC 1026  523       31.684   False
+leslili01w     2  LAS 1033  606       31.616   False
+swoopsh01w     1  HOU 1090  643       31.356   False
+leslili01w     5  LAS 1150  598       31.136   False
+leslili01w     4  LAS  792  424       31.073   False
+leslili01w     3  LAS 1060  523       31.036   False
+jacksla01w     4  SEA 1109  698       30.859   False
+leslili01w     1  LAS 1028  570       30.821   False
+leslili01w     9  LAS 1059  497       30.735   False
+jacksla01w     5  SEA 1070  634       30.338   False
+griffyo01w     2  SAC 1077  518       30.186   False
+leslili01w    10  LAS  638  354       30.156   False
+catchta01w     3  IND 1167  594       30.133    True
+jacksla01w     6  SEA 1176  597       30.062   False
+holdsch01w     5  WAS  801  437       29.938   False
+mccouan01w    10  ATL  735  435       29.927    True
+catchta01w     4  IND 1210  671       29.873   False
+holdsch01w     4  WAS  948  554       29.790   False
+leslili01w     6  LAS 1096  517       29.671   False
+augusse01w     8  MIN 1093  769       29.527   False
+catchta01w     8  IND  678  348       29.203   False
+catchta01w     5  IND 1149  568       29.052   False
+tauradi01w     8  PHO 1025  613       29.009   False
+parkeca01w    10  LAS  815  328       28.848   False
+catchta01w     9  IND  694  332       28.778   False
+tauradi01w     7  PHO 1152  860       28.728   False
+griffyo01w     3  SAC  577  288       28.702   False
+catchta01w    10  IND 1084  512       28.652   False
+holdsch01w     3  WAS  634  397       28.524   False
+willina01w     1  UTA 1039  543       28.488   False
+swoopsh01w     3  HOU 1154  592       28.439   False
+pondeca01w    10  PHO 1075  648       28.337   False
+jacksla01w     3  SEA  882  482       28.266   False
+catchta01w     7  IND 1071  521       28.180   False
+houstch01w    10  MIN  792  445       28.098   False
+pondeca01w     9  PHO 1002  679       28.016   False
+augusse01w     9  MIN 1042  591       27.922   False
+bonnede01w    10  PHO  724  381       27.900    True
+catchta01w     6  IND 1174  501       27.865   False
+wiggica01w     9  MIN  824  472       27.795    True
+ reedbr01w     1  PHO 1090  608       27.760   False
+taylope01w    10  PHO  283  153       27.729   False
+augusse01w     7  MIN 1124  744       27.727    True
+griffyo01w     4  SAC 1015  469       27.578   False
+lyttlsa01w    10  ATL  931  443       27.465   False
+holdsch01w     6  LAS 1183  561       27.335   False
+humphta01w     9  DET  297  160       27.333    True
+griffyo01w     5  SAC 1031  494       27.211   False
+dydekma01w     4  SAS  926  406       27.167   False
+taylope01w     8  PHO 1010  605       26.966   False
+haydeva01w     9  MIN  304  157       26.912   False
+dydekma01w     3  UTA  876  394       26.893   False
+swoopsh01w     4  HOU 1084  484       26.732   False
+lennobe01w     1  MIN  984  541       26.689   False
+griffyo01w     6  SAC  962  469       26.608   False
+griffyo01w     7  SAC  854  407       26.585   False
+ fordch01w     8  DET  460  195       26.555   False
+pondeca01w     7  PHO 1067  624       26.492    True
+holdsch01w     7  LAS  739  375       26.467   False
+anosini01w    10  MIN  896  396       26.410   False
+lennobe01w     2  MIN  241  121       26.326   False
+braxtka01w    10  DET  504  252       26.295   False
+jonesas01w    10  CON  727  384       26.291   False
+mccarja01w    10  NYL  848  393       26.193   False
+pondeca01w     8  PHO  966  532       26.108   False
+dydekma01w     7  CON  743  320       26.049   False
+ fordch01w     9  DET  637  243       26.026   False
+lyttlsa01w     9  HOU  489  222       26.017   False
+fowlesy01w     9  CHI  430  178       25.995    True
+ fordch01w     7  DET  920  443       25.958   False
+holdsch01w     2  WAS  975  486       25.955   False
+youngso01w    10  SAS 1113  600       25.872   False
+dupreca01w     9  CHI 1119  555       25.834   False
+jonesas01w     9  CON  963  561       25.816   False
+desouer01w    10  ATL  928  402       25.813   False
+dydekma01w     5  SAS  682  225       25.782   False
+willina01w     2  UTA 1064  439       25.741   False
+beardal01w     7  WAS  994  614       25.683   False
+goodsad01w     1  UTA  929  498       25.653   False
+haydeva01w    10  LAS  269   94       25.624   False
+jacksla01w     2  SEA 1001  442       25.621    True
+beardal01w     8  WAS 1169  622       25.609   False
+stepama01w     2  PHO  815  334       25.604   False
+thompti01w     1  HOU 1087  540       25.591   False
+thompti01w     2  HOU 1102  579       25.584   False
+haydeva01w     6  MIN  595  246       25.584   False
+haydeva01w     7  MIN  424  177       25.537   False
+stepama01w     6  PHO  409  162       25.516   False
+youngso01w     9  SAS 1054  576       25.499   False
+brunsre01w    10  SAC  665  331       25.412   False
+houstch01w     9  MIN  581  292       25.411    True
+holdsch01w     1  WAS 1131  561       25.397   False
+
+Total de linhas processadas: 1876
+
