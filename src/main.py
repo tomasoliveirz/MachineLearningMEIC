@@ -3,11 +3,8 @@ import pandas as pd
 from pathlib import Path
 from contextlib import redirect_stdout
 from datetime import datetime
-from player_performance import (
-    calculate_player_performance,
-    is_rookie,
-)
-from model import prepare_train_test_data, train_and_evaluate_model
+from player_performance import calculate_player_performance
+
 
 def main():
     # Create timestamped output file
@@ -46,78 +43,10 @@ def _run_complete_analysis():
 
     sample = raw[['bioID', 'year', 'tmID', 'mp', 'pts', 'trb', 'ast', 'stl', 'blk', 'tov']].copy()
 
-    # detect rookies before performance calculation
-    rookie_mask_before = is_rookie(sample)
-    n_rookies_before = int(rookie_mask_before.sum())
 
-    # compute performance (uses seasons in the DataFrame)
-    start = time.time()
-    res = calculate_player_performance(
-        sample, 
-        seasons_back=3, 
-        decay=0.7,
-        rookie_min_minutes=100.0,  # Threshold: rookies need at least 100 minutes to avoid heavy shrinkage
-        rookie_prior_strength=3600.0  # Prior strength: equivalent to 3600 minutes of average performance
-    )
-    duration = time.time() - start
+    # Compute player performance (produces a DataFrame named `res`)
+    res = calculate_player_performance(sample)
 
-    perf = res['performance']
-
-    # Basic prints
-    print("=== Player performance (amostra) ===")
-    print(f"Origem: {raw_path}")
-    print(f"Sample size: {len(sample)}  |  Execution time: {duration:.3f}s")
-    print()
-
-    # Overall performance summary
-    print("Performance summary (all rows):")
-    print(perf.describe(percentiles=[0.25, 0.5, 0.75]).to_string())
-    print()
-
-    # Rookies info
-    print("Rookies (identificados antes do cálculo):")
-    print(f"Rookies identificados: {n_rookies_before}")
-    if n_rookies_before > 0:
-        rookies_df = res[rookie_mask_before]
-        print(f"Rookies - performance mean: {rookies_df['performance'].mean():.3f}  |  std: {rookies_df['performance'].std():.3f}")
-        print("Top 5 rookies (por performance):")
-        cols_rookie = ['bioID', 'year', 'tmID', 'mp', 'pts', 'performance', 'rookie']
-        existing_cols = [c for c in cols_rookie if c in rookies_df.columns]
-        print(rookies_df[existing_cols].sort_values('performance', ascending=False).head(5).to_string(index=False))
-    print()
-
-    # Top / bottom performers
-    print("Top 10 players (por performance):")
-    cols_top = ['bioID', 'year', 'tmID', 'mp', 'pts', 'performance', 'rookie']
-    existing_top = [c for c in cols_top if c in res.columns]
-    print(res[existing_top].sort_values('performance', ascending=False).head(10).to_string(index=False))
-    print()
-    print("Bottom 10 players (por performance):")
-    cols_bot = ['bioID', 'year', 'tmID', 'mp', 'pts', 'performance', 'rookie']
-    existing_bot = [c for c in cols_bot if c in res.columns]
-    print(res[existing_bot].sort_values('performance', ascending=True).head(10).to_string(index=False))
-    print()
-
-    # By year summary
-    if 'year' in res.columns:
-        print("Performance por year (mean, count):")
-        by_year = res.groupby('year')['performance'].agg(['mean', 'count']).sort_index()
-        print(by_year.to_string())
-        print()
-
-    # By team summary (top teams by avg performance)
-    if 'tmID' in res.columns:
-        print("Resumo por time (top 10 por avg performance):")
-        by_team = res.groupby('tmID')['performance'].agg(['mean', 'count']).sort_values('mean', ascending=False)
-        print(by_team.head(10).to_string())
-        print()
-
-    # Final short table
-    print("Top 100 jogadores com maiores performances:")
-    cols_final = ['bioID', 'year', 'tmID', 'mp', 'pts', 'performance', 'rookie']
-    existing_final = [c for c in cols_final if c in res.columns]
-    print(res[existing_final].sort_values('performance', ascending=False).head(100).to_string(index=False))
-    print(f"\nTotal de linhas processadas: {len(res)}\n")
 
     # --- Save enhanced player performance CSV to requested folder ---
     out_dir = base / 'data' / 'processed' 
@@ -131,30 +60,6 @@ def _run_complete_analysis():
     except Exception as e:
         print(f"Erro ao salvar CSV em {out_file}: {e}")
 
-#  #Execute model
-#  print("="*80)
-#  print("EXECUTANDO MODELO DE PREDIÇÃO DE RANKING")
-#  print("="*80)
-#  
-#  # Carregar dados das equipes
-#  teams_path = base / 'data' / 'processed' / 'team_season.csv'
-#  teams_data = pd.read_csv(teams_path)
-#  
-#  # Preparar dados de treino/teste
-#  X_train, X_test, y_train, y_test, test_data = prepare_train_test_data(
-#      player_stats=res,  # res é o DataFrame com performance calculada
-#      teams_data=teams_data,
-#      test_season=10,
-#      seasons_back=3,
-#      decay=0.7
-#  )
-#  
-#  # Treinar e avaliar modelo
-#  model_results = train_and_evaluate_model(X_train, X_test, y_train, y_test, test_data)
-#  print("\nModelo executado com sucesso!")
-#  
-#  print("\n=== Resultados do Modelo ===")
-#  print(model_results)
 
 if __name__ == '__main__':
     main()
