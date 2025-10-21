@@ -7,12 +7,12 @@ from player_performance import calculate_player_performance
 
 
 def main():
-    # define base paths
+    # Define base paths
     base = Path(__file__).resolve().parent.parent
     raw_path = base / 'data' / 'raw' / 'players_teams.csv'
     raw = pd.read_csv(raw_path)
 
-    # rename columns to match what calculate_player_performance expects
+    # Rename columns to match expected format
     raw.rename(columns={
         'playerID': 'bioID',
         'minutes': 'mp',
@@ -26,29 +26,29 @@ def main():
         'tmID': 'tmID'
     }, inplace=True)
 
-    # keep only the relevant columns
+    # Keep only relevant columns
     sample = raw[['bioID', 'year', 'tmID', 'mp', 'pts', 'trb', 'ast', 'stl', 'blk', 'tov']].copy()
 
-    # compute player performance using historical data
+    # Calculate player performance using historical data
     res = calculate_player_performance(
         sample,
-        seasons_back=3,          # how many past seasons to include
-        decay=0.7,               # how fast old seasons lose importance
-        rookie_min_minutes=100.0,    # rookies below this playtime get shrinkage
-        rookie_prior_strength=3600.0 # prior strength (like 3600 “virtual” minutes of league average)
+        seasons_back=3,          # How many past seasons to consider
+        decay=0.7,               # How quickly past seasons lose weight
+        rookie_min_minutes=100.0,    # Minimum minutes for rookies to avoid heavy shrinkage
+        rookie_prior_strength=3600.0 # Equivalent to 3600 minutes of league average performance
     )
 
-    # set up output folder and file path
+    # Set up output folder and file path
     out_dir = base / 'data' / 'processed'
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_file = out_dir / 'player_perfomance.csv'
+    out_file = out_dir / 'player_performance.csv'
 
-    # save the result to csv
+    # Save the result to a CSV file
     try:
         res.to_csv(out_file, index=False, encoding='utf-8')
-        print(f"\n✅ csv saved to: {out_file}")
+        print(f"CSV saved to: {out_file}")
     except Exception as e:
-        print(f"error saving csv to {out_file}: {e}")
+        print(f"Error saving CSV to {out_file}: {e}")
 
 
 if __name__ == '__main__':
