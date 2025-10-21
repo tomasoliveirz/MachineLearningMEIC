@@ -1,2 +1,0 @@
-
-✅ CSV salvo em: C:\Users\gluca\OneDrive\Ambiente de Trabalho\Master FEUP\MachineLearningMEIC\data\processed\player_perfomance.csv

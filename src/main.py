@@ -7,22 +7,7 @@ from player_performance import calculate_player_performance
 
 
 def main():
-    # Create timestamped output file
-    timestamp = datetime.now().strftime("mes_%m_dia_%d_hora_%H_min_%M")
-    output_dir = Path(__file__).resolve().parent.parent / 'reports'
-    output_dir.mkdir(exist_ok=True)
-    output_file = output_dir / f'Analysis_{timestamp}.txt'
     
-    print(f"Saving complete analysis to: {output_file}")
-    
-    with open(output_file, 'w', encoding='utf-8') as f:
-        with redirect_stdout(f):
-            _run_complete_analysis()
-    
-    print(f"\n✅ Complete analysis saved to: {output_file}")
-
-
-def _run_complete_analysis():
     base = Path(__file__).resolve().parent.parent
     raw_path = base / 'data' / 'raw' / 'players_teams.csv'
     raw = pd.read_csv(raw_path)
@@ -44,8 +29,14 @@ def _run_complete_analysis():
     sample = raw[['bioID', 'year', 'tmID', 'mp', 'pts', 'trb', 'ast', 'stl', 'blk', 'tov']].copy()
 
 
-    # Compute player performance (produces a DataFrame named `res`)
-    res = calculate_player_performance(sample)
+    # compute performance (uses seasons in the DataFrame)
+    res = calculate_player_performance(
+        sample, 
+        seasons_back=3, 
+        decay=0.7,
+        rookie_min_minutes=100.0,  # Threshold: rookies need at least 100 minutes to avoid heavy shrinkage
+        rookie_prior_strength=3600.0  # Prior strength: equivalent to 3600 minutes of average performance
+    )
 
 
     # --- Save enhanced player performance CSV to requested folder ---
@@ -59,7 +50,6 @@ def _run_complete_analysis():
         print(f"\n✅ CSV salvo em: {out_file}")
     except Exception as e:
         print(f"Erro ao salvar CSV em {out_file}: {e}")
-
 
 if __name__ == '__main__':
     main()
