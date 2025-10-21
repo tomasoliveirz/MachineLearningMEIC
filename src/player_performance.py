@@ -4,6 +4,10 @@ from typing import Tuple, Dict
 import numpy as np
 import pandas as pd
 
+MIN_EFFECTIVE_MINUTES = 12.0 # minimum minutes to avoid inflating per36
+MIN_TRUST_MINUTES = 36.0 # minimum minutes to fully trust observed per36
+
+
 def is_rookie(player_stats: pd.DataFrame) -> pd.Series:
     """
     return a boolean series indicating whether each row is a rookie season.
@@ -22,6 +26,7 @@ def is_rookie(player_stats: pd.DataFrame) -> pd.Series:
     min_year = df['year'].min()
     rookie_mask = (df.groupby('bioID')['year'].transform('min') == df['year']) & (df['year'] > min_year)
     return rookie_mask.reindex(player_stats.index, fill_value=False)
+
 
 def calculate_player_performance(
     player_stats: pd.DataFrame,
@@ -112,49 +117,94 @@ def calculate_player_performance(
     return df
 
 
+def _pos_to_role_series(pos_series: pd.Series) -> pd.Series:
+    """
+    Mapear strings de posição para categorias de papel (guard, wing, forward, center, forward_center, unknown).
+    É robusto a valores NaN e formatos como 'C', 'F', 'G', 'C-F', 'F-C', 'G-F', 'F-G', 'Unknown'.
+    """
+    pos = pos_series.fillna('Unknown').astype(str).str.upper()
+
+    def _map(p: str) -> str:
+        if 'G' in p and 'C' not in p and 'F' not in p:
+            return 'guard'
+        # combos guard/forward => wing
+        if 'G' in p and 'F' in p:
+            return 'wing'
+        # combos forward/center
+        if 'F' in p and 'C' in p:
+            return 'forward_center'
+        # explicit center
+        if 'C' in p:
+            return 'center'
+        if 'F' in p:
+            return 'forward'
+        return 'unknown'
+
+    return pos.map(_map)
+
+
 def _compute_per36_metrics(df: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
     """
-    compute per-36 contribution and total minutes for each row.
-
-    returns:
-        (per36, minutes_total)
+    Calcula per36 e minutos totais por linha, usando pesos adaptativos por posição.
+    Retorna (per36, minutes_total).
     """
-    # stat weights for a simple linear score
-    stat_weights = {
-        'pts': 1.0, 'reb': 0.7, 'ast': 0.7,
-        'stl': 1.2, 'blk': 1.2, 'tov': -0.7,
+    def _safe_col(name: str) -> pd.Series:
+        return df[name] if name in df.columns else pd.Series(0.0, index=df.index, dtype=float)
+
+    # Reconstruir rebotes preferindo 'trb' senão orb+drb
+    if 'trb' in df.columns:
+        reb_col = _safe_col('trb')
+    else:
+        reb_col = _safe_col('orb') + _safe_col('drb')
+
+    # Mapear posição -> categoria de papel
+    role = _pos_to_role_series(df['pos'] if 'pos' in df.columns else pd.Series(['Unknown'] * len(df), index=df.index))
+
+    # Definir pesos por papel (pts, reb, ast, stl, blk, tov)
+    role_weights = {
+        'center':          {'pts':1.00, 'reb':1.10, 'ast':0.40, 'stl':0.60, 'blk':1.50, 'tov':-0.80},
+        'forward_center':  {'pts':1.00, 'reb':0.95, 'ast':0.60, 'stl':0.80, 'blk':1.20, 'tov':-0.70},
+        'forward':         {'pts':1.00, 'reb':0.85, 'ast':0.60, 'stl':0.90, 'blk':0.90, 'tov':-0.70},
+        'wing':            {'pts':1.00, 'reb':0.70, 'ast':0.80, 'stl':1.20, 'blk':0.60, 'tov':-0.70},
+        'guard':           {'pts':1.00, 'reb':0.40, 'ast':1.10, 'stl':1.50, 'blk':0.40, 'tov':-0.90},
+        'unknown':         {'pts':1.00, 'reb':0.70, 'ast':0.70, 'stl':1.00, 'blk':1.00, 'tov':-0.70},
     }
 
-    def _safe_col(name: str) -> pd.Series:
-        # return column if present, else a zero series with correct index and float dtype
-        return df[name] if name in df.columns else pd.Series(0, index=df.index, dtype=float)
+    # Construir DataFrame de pesos por linha
+    weights_df = pd.DataFrame([role_weights.get(r, role_weights['unknown']) for r in role.values], index=df.index)
 
-    # pick rebounds: 'trb' if available, else sum of 'orb' + 'drb'
-    reb_col = _safe_col('trb') if 'trb' in df.columns else (_safe_col('orb') + _safe_col('drb'))
+    # Ler colunas de estatísticas (ou zeros)
+    pts = _safe_col('pts').astype(float)
+    ast = _safe_col('ast').astype(float)
+    stl = _safe_col('stl').astype(float)
+    blk = _safe_col('blk').astype(float)
+    tov = _safe_col('tov').astype(float)
 
-    # linear raw score using the weights above
+    # Raw score ponderado por posição
     raw_score = (
-        stat_weights['pts'] * _safe_col('pts') +
-        stat_weights['reb'] * reb_col +
-        stat_weights['ast'] * _safe_col('ast') +
-        stat_weights['stl'] * _safe_col('stl') +
-        stat_weights['blk'] * _safe_col('blk') +
-        stat_weights['tov'] * _safe_col('tov')
+        weights_df['pts'].mul(pts) +
+        weights_df['reb'].mul(reb_col) +
+        weights_df['ast'].mul(ast) +
+        weights_df['stl'].mul(stl) +
+        weights_df['blk'].mul(blk) +
+        weights_df['tov'].mul(tov)
     )
 
-    # minutes: prefer 'mp'; if not positive, fall back to 'g' (games) as a rough proxy
-    minutes = _safe_col('mp').where(_safe_col('mp') > 0, _safe_col('g'))
+    # Compute minutes (prefer 'mp', fallback to 'g')
+    mp = _safe_col('mp').astype(float)
+    g = _safe_col('g').astype(float)
+    minutes = mp.where(mp > 0, g)
     minutes = minutes.replace({0: np.nan})
 
-    # enforce a minimum effective minutes for per-36 to avoid exploding tiny samples
-    MIN_EFFECTIVE_MINUTES = 12.0
+    # Aplicar mínimo efetivo para per36 (evitar inflar por poucos minutos)
     minutes_for_per36 = minutes.copy()
     mask_small = minutes_for_per36.notna() & (minutes_for_per36 < MIN_EFFECTIVE_MINUTES)
     minutes_for_per36.loc[mask_small] = MIN_EFFECTIVE_MINUTES
 
-    # per-36 formula and total minutes (use mp; nan -> 0)
     per36 = raw_score.divide(minutes_for_per36).multiply(36)
-    minutes_total = _safe_col('mp').fillna(0)
+
+    # minutos totais usados para ponderações posteriores (sempre em mp quando disponível)
+    minutes_total = mp.fillna(0.0)
 
     return per36, minutes_total
 
@@ -296,7 +346,6 @@ def _apply_shrinkage_corrections(
         if pd.isna(obs_per36) or obs_minutes == 0:
             return prior_mean
 
-        MIN_TRUST_MINUTES = 36.0
         threshold = (
             max(rookie_min_minutes, MIN_TRUST_MINUTES)
             if is_rookie_flag
