@@ -14,7 +14,6 @@ PROC_DIR.mkdir(parents=True, exist_ok=True)
 # load players data (prefer the cleaned version if available)
 def _load_players():
     p_clean = PROC_DIR / "players_cleaned.csv"
-    p_raw = RAW_DIR / "players.csv"
     if p_clean.exists():
         return pd.read_csv(p_clean)
     elif p_raw.exists():
