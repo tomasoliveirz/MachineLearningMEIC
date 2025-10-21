@@ -119,6 +119,18 @@ def _run_complete_analysis():
     print(res[existing_final].sort_values('performance', ascending=False).head(100).to_string(index=False))
     print(f"\nTotal de linhas processadas: {len(res)}\n")
 
+    # --- Save enhanced player performance CSV to requested folder ---
+    out_dir = base / 'data' / 'processed' 
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / 'player_perfomance.csv'
+
+    # Save full result DataFrame (includes performance and rookie)
+    try:
+        res.to_csv(out_file, index=False, encoding='utf-8')
+        print(f"\n✅ CSV salvo em: {out_file}")
+    except Exception as e:
+        print(f"Erro ao salvar CSV em {out_file}: {e}")
+
 #  #Execute model
 #  print("="*80)
 #  print("EXECUTANDO MODELO DE PREDIÇÃO DE RANKING")
