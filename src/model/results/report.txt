@@ -1,26 +1,24 @@
 Relatório de Avaliação do Modelo (season_win_pct)
 ------------------------------------------------------------
-Nº equipas (teste): 16
+Nº equipas (teste): 13
 Seasons no teste: [10]
 
 Métricas de Regressão:
- - R²:  0.5917
- - MAE: 0.0396
- - RMSE:0.0621
- - MAPE:8.91%
+ - R²:  0.9426
+ - MAE: 0.0184
+ - RMSE:0.0227
+ - MAPE:4.02%
 
 Métricas de Ranking (global):
- - Acerto exato de ranking: 43.75%
- - Porcentagem igual ao ranking oficial: 43.75%
- - Acerto dentro de 1 posição: 62.50%
- - Spearman (global): 0.7188
+ - Acerto exato de ranking: 76.92%
+ - Acerto dentro de 1 posição: 92.31%
+ - Spearman (global): 0.9723
 
 Métricas por Conferência (médias):
  - Top-1 acertado (média por conf): 100.00%
  - Overlap Top-3 (média por conf): 100.00%
- - Spearman (média por conf): 0.7130
+ - Spearman (média por conf): 0.9772
 
 Pesos de team_strength usados:
- - avg_player_perf: 0.6
- - total_player_perf: 0.3
- - win_pct_season: 0.1
+ - avg_player_perf: 0.35
+ - total_player_perf: 0.2
