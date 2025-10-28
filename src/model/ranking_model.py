@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.model_selection import RandomizedSearchCV
 
 
 # Suprimir warnings desnecessários
@@ -302,17 +303,19 @@ def train_model(
         )
 
     # pipeline
-    model = Pipeline(
-        steps=[
-            ("scaler", StandardScaler()),
-            (
-                "regressor",
-                GradientBoostingRegressor(random_state=42),
-            ),
-        ]
+    base_pipe = Pipeline(
+        steps=[("scaler", StandardScaler()), ("regressor", GradientBoostingRegressor(random_state=42))]
     )
-
-    model.fit(X_train, y_train)
+    param_dist = {
+        "regressor__n_estimators": [100, 200, 400],
+        "regressor__max_depth": [3, 5, 7],
+        "regressor__learning_rate": [0.01, 0.05, 0.1],
+        "regressor__subsample": [0.6, 0.8, 1.0],
+    }
+    search = RandomizedSearchCV(base_pipe, param_distributions=param_dist, n_iter=12, cv=3, random_state=42, n_jobs=-1)
+    search.fit(X_train, y_train)
+    model = search.best_estimator_
+    print("Best params:", getattr(search, "best_params_", None))
 
     # avaliação
     r2 = model.score(X_test, y_test)
