@@ -1,187 +1,124 @@
-
 # AC — Sports Analytics Pipeline
 
-This repository contains a full **data pipeline for sports analytics**, focused on players, teams, rookies, and seasonal performance.  
-It is structured to allow a clean end-to-end workflow: from raw data to cleaned datasets, feature engineering, and final analysis reports with visualizations.
+Repositório com pipeline end-to-end para análise de desempenho de jogadores, equipas e rookies:
+limpeza → engenharia de features → agregação por época → análise e relatórios.
 
 ---
 
-## Project Structure
-
-```bash
-.
-├── data
-│   ├── raw/                # original CSVs
-│   │   ├── players.csv
-│   │   ├── teams.csv
-│   │   ├── players_teams.csv
-│   │   └── ...
-│   ├── processed/          # cleaned + feature engineered datasets
-│   │   ├── players_cleaned.csv
-│   │   ├── teams_cleaned.csv
-│   │   ├── team_season.csv
-│   │   └── team_rookie_features.csv
-├── reports
-│   ├── figures/            # visualizations (charts)
-│   │   ├── raw/
-│   │   │   ├── height_distribution.png
-│   │   │   ├── ...
-│   │   └── cleaned/
-│   │       ├── height_distribution.png
-│   │       ├── ...
-│   └── tables/             # text reports
-│       ├── raw/
-│       │   └── analysis_report.txt
-│       └── cleaned/
-│           └── analysis_report.txt
-├── src
-│   └── ac
-│       ├── analysis/       # reporting & visualization
-│       │   └── analyzer.py
-│       ├── cleaning/       # cleaning scripts
-│       │   ├── clean_players.py
-│       │   └── clean_teams.py
-│       ├── features/       # feature engineering
-│       │   ├── aggregate_team_season.py
-│       │   └── rookies.py
-│       └── utils/
-├── notebooks/              # exploratory analysis & baselines
-├── requirements.txt
-├── Makefile                # pipeline automation
-└── README.md
-````
+## Estrutura do projecto (resumo)
+- data/raw/             — CSVs originais (players.csv, teams.csv, players_teams.csv, ...)
+- data/processed/       — resultados da limpeza e features
+- src/ac/cleaning/      — scripts de limpeza
+- src/ac/features/      — engenharia de features (team season, rookies)
+- src/ac/analysis/      — geração de gráficos e relatórios
+- reports/              — figuras e tabelas (raw / cleaned)
+- Makefile              — automação da pipeline
+- requirements.txt
 
 ---
 
-## Installation
-
-```bash
-# clone repository
-git clone https://github.com/<your-user>/AC.git
-cd AC
-
-# create environment
-python3 -m venv venv
-source venv/bin/activate
-
-# install dependencies
-pip install -r requirements.txt
-```
+## Pré-requisitos (Windows)
+1. Python 3.8+ instalado.
+2. A partir da root do projecto:
+   - Criar venv e instalar dependências:
+     ```powershell
+     python -m venv venv
+     venv\Scripts\activate
+     pip install -r requirements.txt
+     ```
+   - Ou usar `make venv` (Make deve estar disponível).
 
 ---
 
-## Pipeline Usage
+## Caminho do pipeline (ordem recomendada)
+1. Limpeza
+   - make clean_players
+     - gera: data/processed/players_cleaned.csv
+   - make clean_teams
+     - gera: data/processed/teams_cleaned.csv
 
-Everything is automated via the `Makefile`.
+2. Engenharia de features
+   - make team_season
+     - a partir de teams_cleaned → data/processed/team_season.csv
+   - make rookies
+     - usa players_cleaned + players_teams → data/processed/team_rookie_features.csv e player_rookie_year.csv
 
-<details>
-<summary><b>1. Clean Data</b></summary>
+3. Cálculo de performance por jogador
+   - Workflow principal implementado em src/player_performance.py
+   - make all executa a sequência: clean_players → clean_teams → team_season → rookies → analyze_cleaned
 
-```bash
-make clean_players
-make clean_teams
-```
-
-Generated:
-
-* `data/processed/players_cleaned.csv`
-* `data/processed/teams_cleaned.csv`
-
-</details>
-
-<details>
-<summary><b>2. Feature Engineering</b></summary>
-
-```bash
-make team_season   # aggregates team-level features
-make rookies       # detects rookies & creates features
-```
-
-Generated:
-
-* `data/processed/team_season.csv`
-* `data/processed/team_rookie_features.csv`
-
-</details>
-
-<details>
-<summary><b>3. Analysis</b></summary>
-
-```bash
-make analyze_raw       # analysis using raw data
-make analyze_cleaned   # analysis using cleaned data
-```
-
-Generated:
-
-* Figures → `reports/figures/{raw|cleaned}/`
-* Tables  → `reports/tables/{raw|cleaned}/`
-
-</details>
-
-<details>
-<summary><b>4. Run Full Pipeline</b></summary>
-
-```bash
-make all
-```
-
-This will:
-`clean_players → clean_teams → team_season → rookies → analyze_cleaned`
-
-</details>
+4. Análise e relatórios
+   - make analyze_raw     — gera figuras/tabelas usando dados raw
+   - make analyze_cleaned — gera figuras/tabelas usando dados limpos
+   - Saídas: reports/figures/{raw,cleaned}/ e reports/tables/{raw,cleaned}/
 
 ---
 
-## Quick Visual Check
+## Notas operacionais (decisões implementadas)
+- Rookies (shrinkage com prior)
+  - Porquê: métricas per36 inflacionam quando há poucos minutos (alta variância).
+  - Como: mistura Bayesiana entre a observação e um prior (média de rookies por equipa; fallback global), conforme [`_apply_shrinkage_corrections`](src/player_performance.py).
+    - Fórmula: $$\hat{\mu}=\frac{w_{obs}\,\mu_{obs}+w_{prior}\,\mu_{prior}}{w_{obs}+w_{prior}}$$
+      com $w_{obs}=\frac{\text{minutos}}{36}$ e $w_{prior}=\frac{\text{rookie\_prior\_strength}}{36}$ (reforçado quando minutos são muito baixos).
+  - Exemplo: rookie com 18 min e $\mu_{obs}=28$; prior da equipa $\mu_{prior}=20$.
+    - $w_{obs}=0.5$ e $w_{prior}\approx100$ ⇒ $\hat{\mu}\approx\frac{0.5\cdot28+100\cdot20}{100.5}\approx20.04$ (evita superestimar com amostra pequena).
 
-To preview the reports structure:
+- Históricos (decaimento exponencial)
+  - Porquê: épocas recentes devem pesar mais; estabiliza a métrica com contexto do histórico.
+  - Como: média ponderada temporal por jogador, com decaimento $0<\delta<1$ e, opcionalmente, ponderação por minutos, conforme [`_compute_weighted_history`](src/player_performance.py).
+    - Peso da época $k$ anos atrás: $w_k=\delta^{k}\times \text{minutos}_k$ (se ativado).
+  - Exemplo: épocas com per36 [20, 18, 25] e minutos [800, 600, 200], $\delta=0.7$.
+    - Pesos ≈ [800, 0.7×600, 0.7^2×200] = [800, 420, 98]; média ≈ $(800·20+420·18+98·25)/(1318)\approx19.63$.
 
-```bash
-make reports_tree
-```
+- Fator de contexto da equipa
+  - Porquê: ambientes ofensivos diferentes afetam contagens (ritmo/eficiência).
+  - Como: ajusta multiplicativamente pela força ofensiva da equipa na época, conforme [`_apply_team_factor`](src/player_performance.py):
+    - $adj = \text{perf}\times \frac{\text{team\_pts}}{\text{mediana(team\_pts)}}$.
+  - Exemplo: perf bruta 20 numa equipa 10% acima da mediana de pontos ⇒ 22.
+
+- Ajuste por posição/papel
+  - Porquê: o “valor” das estatísticas varia por função (ex.: AST pesa mais para guards; BLK/Reb mais para centers).
+  - Como: pontuação base ponderada por papel a partir de pos, conforme [`_compute_per36_metrics`](src/player_performance.py) e [`_pos_to_role_series`](src/player_performance.py).
+    - Exemplo: para guard, pesos aproximados: PTS 1.0, REB 0.4, AST 1.1, STL 1.5, BLK 0.4, TOV −0.9; para center: REB 1.1, BLK 1.5, AST 0.4.
+  - Efeito: dois jogadores com mesmas contagens brutas, mas papéis distintos, terão per36 diferentes, refletindo impacto tático.
+
+- Orquestração
+  - Toda a lógica acima é aplicada por [`calculate_player_performance`](src/player_performance.py), usada em [src/main.py](src/main.py).
 
 ---
 
-## Design Philosophy
-
-* **Separation of concerns**
-  Cleaning, feature engineering, and analysis live in their own modules.
-
-* **Reproducibility**
-  All steps are reproducible via `Makefile`.
-
-* **Dual reports**
-  Every analysis is produced for both **raw** and **cleaned** data, for comparison.
+## Comandos úteis
+- Criar ambiente e instalar: make venv
+- Executar pipeline completo: make all
+- Limpar outputs: make clean_data
+- Ver árvore de reports: make reports_tree
+- Ajuda do Makefile: make help
 
 ---
 
-## Roadmap
-
-* Add predictive modeling (ranking, coach changes, awards forecasts).
-* Integrate notebooks → `notebooks/baseline.ipynb` for ML baselines.
-* Continuous validation with leave-one-season-out strategy.
-
-# Aula q o lucao foi
-- A temporada 10 é utilizada como conjunto de teste.
-- Considerar apenas o nome do time, os jogadores que iniciaram a temporada e o treinador; descartar as demais informações.
-- Identificar jogadores novos (rookies) na temporada de teste - nao é possivel calcular a performance deles com base na temporada anterior. - ao invez de dar nota 0, usar a media dos rookies das temporadas anteriores
-- Calcular a média de performance dos jogadores para a temporada de teste com base nos dados das temporadas anteriores.
-- A média simples das performances pode ser distorcida por jogadores com poucos minutos em campo.
-- Para avaliar a performance do time, recomenda-se calcular uma média ponderada das performances dos jogadores, utilizando como peso o número de jogos (ou minutos jogados) de cada atleta.
-- Coach vai ter menos importancia
+## Próximos passos (priorizados)
+1. Implementar skeleton em src/model/ranking_model.py:
+   - usar data/processed/player_performance.csv e team_season.csv para treinar modelo de ranking.
+2. Testes unitários:
+   - adicionar pytest + testes para cleaning, features e player_performance.
+3. Integração contínua:
+   - GitHub Actions para rodar testes e pipeline parcial (fast checks).
+4. Containerização:
+   - Dockerfile para garantir ambiente reproduzível e execução em Windows/Linux.
+5. Melhorias de pipeline:
+   - parametrizar hyperparâmetros (decay, shrinkage) via config YAML.
+   - salvar artefactos (modelos, scalers) em models/ e versionamento.
+6. Documentação e exemplos:
+   - notebook de baseline (notebooks/baseline.ipynb) e tutorial passo-a-passo.
+7. Análises adicionais:
+   - calibrar importância do treinador, explorar features derivadas de jogo (lineups).
 
 ---
 
 ## Maintainers
+- Tomás Oliveira — up202208415
+- Lucas Greco — up202208296
 
-* Tomás Oliveira — up202208415
-* Lucas Greco — up202208296
+--- 
 
-
-
-A PERFOMANCE PODE MUDAR COM A POSIÇÃO do jogador :O
-
-
-
-
+Observação: executar `make help` para referência rápida dos targets e usar `make venv` antes de correr os targets se ainda não criou o ambiente virtual.

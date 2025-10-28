@@ -3,6 +3,8 @@ from typing import Tuple, Dict
 
 import numpy as np
 import pandas as pd
+from pathlib import Path
+import sys
 
 MIN_EFFECTIVE_MINUTES = 12.0 # minimum minutes to avoid inflating per36
 MIN_TRUST_MINUTES = 36.0 # minimum minutes to fully trust observed per36
@@ -424,3 +426,74 @@ def _finalize_performance_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df.drop(columns=[c for c in ['_per36', '_minutes'] if c in df.columns], inplace=True)
 
     return df
+
+
+def main():
+
+    base = Path(__file__).resolve().parents[2]
+    raw_path = base / "data" / "raw" / "players_teams.csv"
+    if not raw_path.exists():
+        print(f"Input file not found: {raw_path}", file=sys.stderr)
+        return
+
+    try:
+        raw = pd.read_csv(raw_path)
+    except Exception as e:
+        print(f"Error reading CSV {raw_path}: {e}", file=sys.stderr)
+        return
+
+    # Rename columns to match expected format (only rename if present)
+    rename_map = {
+        'playerID': 'bioID',
+        'minutes': 'mp',
+        'points': 'pts',
+        'rebounds': 'trb',
+        'assists': 'ast',
+        'steals': 'stl',
+        'blocks': 'blk',
+        'turnovers': 'tov',
+        'year': 'year',
+        'tmID': 'tmID'
+    }
+    intersect_map = {k: v for k, v in rename_map.items() if k in raw.columns}
+    raw = raw.rename(columns=intersect_map)
+
+    # Required base columns
+    if 'bioID' not in raw.columns or 'year' not in raw.columns:
+        print("Input CSV must contain 'playerID'/'bioID' and 'year' columns.", file=sys.stderr)
+        return
+
+    # Keep only relevant columns and ensure missing stat columns are present (filled with 0)
+    wanted = ['bioID', 'year', 'tmID', 'mp', 'pts', 'trb', 'ast', 'stl', 'blk', 'tov']
+    sample = raw.copy()
+    for c in wanted:
+        if c not in sample.columns:
+            sample[c] = 0.0
+    sample = sample[wanted].copy()
+
+    # Calculate player performance using historical data
+    try:
+        res = calculate_player_performance(
+            sample,
+            seasons_back=3,
+            decay=0.7,
+            rookie_min_minutes=100.0,
+            rookie_prior_strength=3600.0
+        )
+    except Exception as e:
+        print(f"Error computing player performance: {e}", file=sys.stderr)
+        return
+
+    out_dir = base / 'data' / 'processed'
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / 'player_performance.csv'
+
+    try:
+        res.to_csv(out_file, index=False, encoding='utf-8')
+        print(f"CSV saved to: {out_file}")
+    except Exception as e:
+        print(f"Error saving CSV to {out_file}: {e}", file=sys.stderr)
+
+
+if __name__ == '__main__':
+    main()
