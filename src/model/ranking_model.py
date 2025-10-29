@@ -17,13 +17,14 @@ from sklearn.model_selection import RandomizedSearchCV
 warnings.filterwarnings("ignore")
 
 
-# Pesos para calcular a força da equipa (expandido para incluir mais fatores)
+# Pesos para calcular a força da equipa 
 TEAM_STRENGTH_WEIGHTS = {
-    "avg_player_perf": 0.35,
-    "total_player_perf": 0.20,
-    "top5_avg_perf": 0.25,  # Performance dos top 5 jogadores
-    "player_consistency": 0.10,  # Consistência das performances
+    "avg_player_perf": 0.30,
+    "total_player_perf": 0.15,
+    "top5_avg_perf": 0.20,  # Performance dos top 5 jogadores
+    "player_consistency": 0.08,  # Consistência das performances
     "prev_season_win_pct": 0.10,  # Histórico recente
+    "coach_performance": 0.17,  # Performance do treinador (novo fator)
 }
 
 
@@ -97,6 +98,7 @@ def load_data() -> Dict[str, pd.DataFrame]:
     - data/processed/player_performance.csv
     - data/processed/team_season.csv
     - data/processed/teams_cleaned.csv
+    - data/processed/coach_performance.csv
     - data/raw/series_post.csv
     - data/raw/teams_post.csv
     """
@@ -111,7 +113,6 @@ def load_data() -> Dict[str, pd.DataFrame]:
         "players": _find_csv([
             os.path.join(processed_dir, "player_performance.csv"),
             "player_performance.csv",
-            "player_perfomance.csv",
         ]),
         "team_season": _find_csv([
             os.path.join(processed_dir, "team_season.csv"),
@@ -120,7 +121,10 @@ def load_data() -> Dict[str, pd.DataFrame]:
         "teams_cleaned": _find_csv([
             os.path.join(processed_dir, "teams_cleaned.csv"),
             "teams_cleaned.csv",
-            "team_cleared.csv",
+        ]),
+        "coach_performance": _find_csv([
+            os.path.join(processed_dir, "coach_performance.csv"),
+            "coach_performance.csv",
         ]),
         "series_post": _find_csv([
             os.path.join(raw_dir, "series_post.csv"),
@@ -129,14 +133,13 @@ def load_data() -> Dict[str, pd.DataFrame]:
         "team_post": _find_csv([
             os.path.join(raw_dir, "teams_post.csv"),
             "teams_post.csv",
-            "team_post.csv",
         ]),
     }
 
     dfs = {k: _standardize_columns(pd.read_csv(v)) for k, v in paths.items()}
 
     # garantir presença de year e tmid
-    for key in [ "players", "team_season", "teams_cleaned"]:
+    for key in [ "players", "team_season", "teams_cleaned", "coach_performance"]:
         df = dfs[key]
         missing = [c for c in ["year", "tmid"] if c not in df.columns]
         if missing:
@@ -149,7 +152,7 @@ def load_data() -> Dict[str, pd.DataFrame]:
     # preencher NaN com 0 depois das coerções numéricas
     for k in dfs.keys():
         # converter numéricos quando possível (excluindo ids e nomes)
-        dfs[k] = _coerce_numeric(dfs[k], exclude=["tmid", "name", "confid", "arena"]).fillna(0)
+        dfs[k] = _coerce_numeric(dfs[k], exclude=["tmid", "name", "confid", "arena", "coachid"]).fillna(0)
 
     return dfs
 
@@ -169,11 +172,13 @@ def prepare_features(
     players: pd.DataFrame,
     team_season: pd.DataFrame,
     teams_cleaned: pd.DataFrame,
+    coach_performance: pd.DataFrame,
 ) -> Tuple[pd.DataFrame, List[str], str]:
     """Gera features agregadas e devolve dataframe final, lista de features e target.
 
     - Aggregations avançadas de jogadores por (tmid, year)
     - Incorpora histórico do time (win%, point differential, tendências)
+    - Incorpora performance dos coaches (coaching quality)
     - Calcula team_strength com múltiplos fatores
     """
 
@@ -207,18 +212,42 @@ def prepare_features(
     # Inverter consistência (maior std = menor consistência normalizada)
     player_aggs["player_consistency"] = 1.0 / (1.0 + player_aggs["player_consistency"])
 
-    # 2) Juntar com team_season primeiro para ter acesso ao histórico
+    # 2) Coach aggregates - agregar performance dos coaches por (tmid, year)
+    # Um time pode ter múltiplos coaches numa season, então pegamos a média ponderada por jogos
+    if "performance" in coach_performance.columns and "games" in coach_performance.columns:
+        # Weighted average de coach performance por games coached
+        coach_aggs = (
+            coach_performance.groupby(["tmid", "year"])
+            .apply(lambda g: np.average(g["performance"], weights=g["games"]) if g["games"].sum() > 0 else 0.0)
+            .reset_index()
+            .rename(columns={0: "coach_performance"})
+        )
+        # Features adicionais do coach
+        coach_extras = (
+            coach_performance.groupby(["tmid", "year"]).agg(
+                coach_win_pct=("won", lambda x: x.sum() / (x.sum() + coach_performance.loc[x.index, "lost"].sum()) if (x.sum() + coach_performance.loc[x.index, "lost"].sum()) > 0 else 0),
+                num_coaches=("performance", "count"),  # número de coaches na season
+            )
+            .reset_index()
+        )
+        coach_aggs = coach_aggs.merge(coach_extras, on=["tmid", "year"], how="left")
+    else:
+        # Fallback se coach_performance não tiver as colunas esperadas
+        coach_aggs = pd.DataFrame(columns=["tmid", "year", "coach_performance", "coach_win_pct", "num_coaches"])
+
+    # 3) Juntar com team_season primeiro para ter acesso ao histórico
     df = team_season.copy()
     name_col = "name" if "name" in df.columns else None
 
     df = df.merge(player_aggs, on=["tmid", "year"], how="left")
+    df = df.merge(coach_aggs, on=["tmid", "year"], how="left")
 
     # Trazer confid de teams_cleaned
     keep_cols = [c for c in ["tmid", "year", "confid"] if c in teams_cleaned.columns]
     conf_part = teams_cleaned[keep_cols].drop_duplicates()
     df = df.merge(conf_part, on=["tmid", "year"], how="left")
 
-    # 3) Features de histórico do time (já existem em team_season)
+    # 4) Features de histórico do time (já existem em team_season)
     # Estas colunas já devem existir: prev_season_win_pct_1, prev_season_win_pct_3, 
     # prev_point_diff_3, prev_point_diff_5, win_pct_change_from_prev
     historical_features = [
@@ -231,7 +260,12 @@ def prepare_features(
         if feat not in df.columns:
             df[feat] = 0.0
 
-    # 4) Criar features derivadas
+    # Preencher coach features se não existirem
+    for feat in ["coach_performance", "coach_win_pct", "num_coaches"]:
+        if feat not in df.columns:
+            df[feat] = 0.0
+
+    # 5) Criar features derivadas
     # Momentum: tendência de melhoria (win_pct_change positivo = bom momentum)
     df["momentum"] = df["win_pct_change_from_prev"].fillna(0)
     
@@ -243,10 +277,13 @@ def prepare_features(
     
     # Profundidade do elenco (diferença entre top 5 e média geral)
     df["roster_depth"] = df["avg_player_perf"] / df["top5_avg_perf"].clip(lower=0.01)
+    
+    # Estabilidade do coaching staff (menos coaches = mais estável)
+    df["coaching_stability"] = 1.0 / df["num_coaches"].clip(lower=1)
 
-    # 5) Calcular team_strength com múltiplos fatores
+    # 6) Calcular team_strength com múltiplos fatores
     for c in ["avg_player_perf", "total_player_perf", "top5_avg_perf", 
-              "player_consistency", "prev_season_win_pct_1"]:
+              "player_consistency", "prev_season_win_pct_1", "coach_performance"]:
         if c not in df.columns:
             df[c] = 0.0
     
@@ -256,6 +293,7 @@ def prepare_features(
         + df["top5_avg_perf"] * TEAM_STRENGTH_WEIGHTS.get("top5_avg_perf", 0.0)
         + df["player_consistency"] * TEAM_STRENGTH_WEIGHTS.get("player_consistency", 0.0)
         + df["prev_season_win_pct_1"] * TEAM_STRENGTH_WEIGHTS.get("prev_season_win_pct", 0.0)
+        + df["coach_performance"] * TEAM_STRENGTH_WEIGHTS.get("coach_performance", 0.0)
     )
 
     # Target
@@ -263,12 +301,14 @@ def prepare_features(
     if target not in df.columns:
         raise ValueError("Coluna target 'season_win_pct' não encontrada em team_season.csv")
 
-    # Features: combinação de player stats, histórico e derivadas
+    # Features: combinação de player stats, coach stats, histórico e derivadas
     feature_cols = [
         # Player-based features
         "avg_player_perf", "total_player_perf", "top5_avg_perf", "top3_avg_perf",
         "player_consistency", "rookie_count", "team_size", "max_player_perf",
         "min_player_perf", "rookie_ratio", "roster_depth",
+        # Coach-based features 
+        "coach_performance", "coach_win_pct", "num_coaches", "coaching_stability",
         # Historical features
         "prev_season_win_pct_1", "prev_season_win_pct_3", "prev_season_win_pct_5",
         "prev_point_diff_3", "prev_point_diff_5",
@@ -337,14 +377,11 @@ def train_model(
     search = RandomizedSearchCV(base_pipe, param_distributions=param_dist, n_iter=12, cv=3, random_state=42, n_jobs=-1)
     search.fit(X_train, y_train)
     model = search.best_estimator_
-    print("Best params:", getattr(search, "best_params_", None))
 
     # avaliação
     r2 = model.score(X_test, y_test)
     pred_test = model.predict(X_test)
     mae = mean_absolute_error(y_test, pred_test)
-    print(f"R^2 (teste): {r2:.4f}")
-    print(f"MAE (teste): {mae:.4f}")
 
     # devolver X_test com meta para ranking
     X_test_with_meta = X_test.copy()
@@ -387,13 +424,6 @@ def predict_and_rank(
     output_csv_path = os.path.join(results_dir, os.path.basename(output_csv))
     out[["confid", "rank", "tmid", "name", "predicted_win_pct"]].to_csv(output_csv_path, index=False)
 
-    # opcional: imprimir top 5 por conferência
-    print("Ranking previsto (top 5 por conferência):")
-    for conf, g in out.groupby("confid"):
-        print(f"\nConferência {conf}")
-        print(g.head(5)[["rank", "tmid", "name", "predicted_win_pct"]].to_string(index=False))
-
-    print(f"\nPredicted rankings salvo em: {os.path.abspath(output_csv_path)}")
     return out
 
 
@@ -511,6 +541,10 @@ def compare_and_report(
     lines.append("Pesos de team_strength usados:")
     lines.append(f" - avg_player_perf: {TEAM_STRENGTH_WEIGHTS.get('avg_player_perf', 0.0)}")
     lines.append(f" - total_player_perf: {TEAM_STRENGTH_WEIGHTS.get('total_player_perf', 0.0)}")
+    lines.append(f" - top5_avg_perf: {TEAM_STRENGTH_WEIGHTS.get('top5_avg_perf', 0.0)}")
+    lines.append(f" - player_consistency: {TEAM_STRENGTH_WEIGHTS.get('player_consistency', 0.0)}")
+    lines.append(f" - prev_season_win_pct: {TEAM_STRENGTH_WEIGHTS.get('prev_season_win_pct', 0.0)}")
+    lines.append(f" - coach_performance: {TEAM_STRENGTH_WEIGHTS.get('coach_performance', 0.0)}")
 
     # Guardar report dentro de src/model/results
     results_dir = os.path.join(os.path.dirname(__file__), "results")
@@ -523,23 +557,18 @@ def compare_and_report(
     except Exception as e:
         print(f"Falha ao salvar o relatório: {e}")
 
-    # Mostrar resumo por conferência no terminal
-    if not conf_df.empty:
-        print("\nResumo por conferência:")
-        display_cols = ["confid", "n_teams", "top1_accuracy", "top3_overlap", "spearman"]
-        print(conf_df[display_cols].to_string(index=False))
-
     return res
 
 def main():
     # 1) Load
     data = load_data()
 
-    # 2) Prepare
+    # 2) Prepare 
     df, feature_cols, target = prepare_features(
         players=data["players"],
         team_season=data["team_season"],
         teams_cleaned=data["teams_cleaned"],
+        coach_performance=data["coach_performance"],
     )
 
     # treino: seasons 1–9; teste: season 10
