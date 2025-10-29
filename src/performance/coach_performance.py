@@ -1,200 +1,184 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Gera métricas de performance de treinadores a partir de data/raw/coaches.csv
-e salva em data/processed/coach_perfomance.csv.
+Coach performance calculation
 
-Métricas por (coachID, year, tmID):
-- win_pct_season                  — win rate da época (won / (won+lost))
-- last1_win_pct, last3_win_pct,
-  last5_win_pct                  — médias das últimas N épocas ANTES da atual
-- career_wins_to_date, career_losses_to_date,
-  career_win_pct_to_date         — carreira até a época anterior
-- tenure_with_team               — nº de épocas com o mesmo tmID até a atual (contagem cumulativa)
-- playoff_win_pct_season         — pós-temporada na época (se houver jogos)
-- confID, name                   — juntados de teams_cleaned quando disponíveis
+This module computes a per-coach "performance" score by combining three signals:
+	- Actual team success (win_pct), standardized by year -> z_win
+	- Over/under performance relative to an expected win rate (pred_win) -> over -> z_over
+		* pred_win is taken from team talent (average player performance) when available, otherwise from a Pythagorean expectation using points for/against.
+	- Rookie development (average rookie performance), standardized by year -> z_rock
 
-Saída: data/processed/coach_perfomance.csv
+Final score:
+	performance = z_win + z_over + 1.2 * z_rock
+
+Inputs (expected files):
+	- data/raw/coaches.csv                (required)  : coach-season records with won/lost
+	- data/processed/teams_cleaned.csv    (optional)  : team-season PF/PA and confID
+	- data/processed/player_performance.csv (optional): player-season performance, rookie flag
+
+Outputs:
+	- data/processed/coach_performance.csv : per-coach-season performance and basic stats
+		(coachID, year, tmID, confID, won, lost, games, performance)
+
+Notes:
+	- Missing team or player data is handled permissively (falls back to Pythagorean or NaN).
+	- Z-scores are computed separately for each year to control for season-level variance.
+	- The module is deterministic and writes the resulting CSV to OUT_PATH.
+
 """
-
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 
 
-def get_root() -> Path:
-	# src/ -> raiz do projeto
-	here = Path(__file__).resolve()
-	for p in [here] + list(here.parents):
-		if (p / "requirements.txt").exists() and (p / "Makefile").exists():
-			return p
-	# fallback: dois níveis acima de src/
-	return Path(__file__).resolve().parents[2]
-
-
-ROOT = get_root()
+ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data" / "raw"
 PROC = ROOT / "data" / "processed"
 PROC.mkdir(parents=True, exist_ok=True)
 
+# Input paths
 COACHES_PATH = RAW / "coaches.csv"
 TEAMS_CLEANED_PATH = PROC / "teams_cleaned.csv"
-OUT_PATH = PROC / "coach_perfomance.csv"  # nota: manter grafia pedida
+TEAM_SEASON_PATH = PROC / "team_season.csv"
+PLAYER_PERF_PATH = PROC / "player_performance.csv"
+
+OUT_PATH = PROC / "coach_performance.csv"
 
 
 def _safe_div(n: float, d: float) -> float:
-	return float(n / d) if d and not np.isnan(d) else np.nan
+    return float(n / d) if d and not np.isnan(d) else np.nan
 
 
-def _rolling_mean_prev(values: pd.Series, window: int) -> pd.Series:
-	"""Média das últimas N entradas ANTES da atual (shift + rolling)."""
-	return (
-		values.shift(1)
-		.rolling(window=window, min_periods=1)
-		.mean()
-	)
+def load_coaches():
+    c = pd.read_csv(COACHES_PATH)
+    c["year"] = pd.to_numeric(c["year"], errors="coerce")
+    c["tmID"] = c["tmID"].astype(str)
+    c["won"] = pd.to_numeric(c["won"], errors="coerce").fillna(0).astype(int)
+    c["lost"] = pd.to_numeric(c["lost"], errors="coerce").fillna(0).astype(int)
+    c["games"] = (c["won"] + c["lost"]).astype(float)
+    c["win_pct"] = c.apply(lambda r: _safe_div(r["won"], r["games"]), axis=1)
+    return c
 
 
-def _cumsum_prev(values: pd.Series) -> pd.Series:
-	"""Cumulativo até a época anterior (shifted cumsum)."""
-	return values.shift(1).fillna(0).cumsum()
+def load_teams():
+    if not TEAMS_CLEANED_PATH.exists():
+        return None
+    t = pd.read_csv(TEAMS_CLEANED_PATH)
+    t["year"] = pd.to_numeric(t["year"], errors="coerce")
+    t["tmID"] = t["tmID"].astype(str)
+
+    # PF = pontos feitos, PA = pontos sofridos
+    if {"o_pts", "d_pts"}.issubset(t.columns):
+        t["PF"] = t["o_pts"]
+        t["PA"] = t["d_pts"]
+    else:
+        t["PF"] = np.nan
+        t["PA"] = np.nan
+
+    keep = ["year", "tmID", "confID", "PF", "PA"]
+    return t[keep]
 
 
-def load_inputs() -> Tuple[pd.DataFrame, pd.DataFrame | None]:
-	coaches = pd.read_csv(COACHES_PATH)
-	# normalizar tipos
-	coaches["year"] = pd.to_numeric(coaches["year"], errors="coerce")
-	coaches["tmID"] = coaches["tmID"].astype(str)
-	coaches["won"] = pd.to_numeric(coaches["won"], errors="coerce").fillna(0).astype(int)
-	coaches["lost"] = pd.to_numeric(coaches["lost"], errors="coerce").fillna(0).astype(int)
-	coaches["post_wins"] = pd.to_numeric(coaches.get("post_wins", 0), errors="coerce").fillna(0).astype(int)
-	coaches["post_losses"] = pd.to_numeric(coaches.get("post_losses", 0), errors="coerce").fillna(0).astype(int)
+def load_players():
+    if not PLAYER_PERF_PATH.exists():
+        return None
+    p = pd.read_csv(PLAYER_PERF_PATH)
+    p["year"] = pd.to_numeric(p["year"], errors="coerce")
+    p["tmID"] = p["tmID"].astype(str)
 
-	teams = None
-	if TEAMS_CLEANED_PATH.exists():
-		teams = pd.read_csv(TEAMS_CLEANED_PATH)
-		teams["year"] = pd.to_numeric(teams["year"], errors="coerce")
-		teams["tmID"] = teams["tmID"].astype(str)
-		# manter colunas úteis para contexto
-		keep = [
-			"year",
-			"tmID",
-			"confID",
-			"name",
-			"won",
-			"lost",
-			"GP",
-		]
-		miss = [c for c in keep if c not in teams.columns]
-		if miss:
-			# selecionar interseção se faltar algumas
-			keep = [c for c in keep if c in teams.columns]
-		teams = teams[keep].copy()
-	return coaches, teams
+    p["perf_val"] = pd.to_numeric(p["performance"], errors="coerce")
+
+    p["is_rookie"] = p["rookie"].astype(bool)
+    return p
 
 
-def compute_metrics(coaches: pd.DataFrame, teams: pd.DataFrame | None) -> pd.DataFrame:
-	df = coaches.copy()
-	# win pct na época
-	df["games"] = (df["won"] + df["lost"]).astype(float)
-	df["win_pct_season"] = df.apply(lambda r: _safe_div(r["won"], r["games"]), axis=1)
-	df["playoff_games"] = (df["post_wins"] + df["post_losses"]).astype(float)
-	df["playoff_win_pct_season"] = df.apply(lambda r: _safe_div(r["post_wins"], r["playoff_games"]), axis=1)
+def team_from_players(players):
+    if players is None:
+        return None
 
-	# ordenar por coachID e year
-	df = df.sort_values(["coachID", "year", "tmID"]).reset_index(drop=True)
+    perf = players.groupby(["year", "tmID"])["perf_val"].mean().reset_index()
+    perf = perf.rename(columns={"perf_val": "talent_avg"})
 
-	# rolling por coachID
-	def _per_coach(g: pd.DataFrame) -> pd.DataFrame:
-		g = g.sort_values(["year"]).reset_index(drop=True)
-		# cumulativos até época anterior
-		g["career_wins_to_date"] = _cumsum_prev(g["won"].astype(float))
-		g["career_losses_to_date"] = _cumsum_prev(g["lost"].astype(float))
-		g["career_games_to_date"] = g["career_wins_to_date"] + g["career_losses_to_date"]
-		g["career_win_pct_to_date"] = g.apply(
-			lambda r: _safe_div(r["career_wins_to_date"], r["career_games_to_date"]), axis=1
-		)
+    rook = players[players["is_rookie"]].groupby(["year", "tmID"])["perf_val"].mean().reset_index()
+    rook = rook.rename(columns={"perf_val": "rookie_dev"})
 
-		# médias das últimas N épocas (antes da atual)
-		for n in (1, 3, 5):
-			g[f"last{n}_win_pct"] = _rolling_mean_prev(g["win_pct_season"], n)
-
-		# tenure com o mesmo tmID (contagem cumulativa dentro de cada tmID)
-		g["tenure_with_team"] = (
-			g.groupby("tmID").cumcount() + 1  # conta incluindo a atual
-		)
-		return g
-
-	df = df.groupby("coachID", group_keys=False).apply(_per_coach)
-
-	# juntar contexto do teams_cleaned (confID, name) se disponível
-	if teams is not None and not teams.empty:
-		df = df.merge(teams, on=["year", "tmID"], how="left", suffixes=("", "_team"))
-
-	# colunas de saída ordenadas
-	out_cols = [
-		"coachID",
-		"year",
-		"tmID",
-		"confID",
-		"name",
-		"won",
-		"lost",
-		"games",
-		"win_pct_season",
-		"last1_win_pct",
-		"last3_win_pct",
-		"last5_win_pct",
-		"career_wins_to_date",
-		"career_losses_to_date",
-		"career_games_to_date",
-		"career_win_pct_to_date",
-		"tenure_with_team",
-		"post_wins",
-		"post_losses",
-		"playoff_games",
-		"playoff_win_pct_season",
-	]
-	# manter apenas as que existem
-	out_cols = [c for c in out_cols if c in df.columns]
-	df_out = df[out_cols].copy()
-
-	# tipos finais
-	numeric_cols = [
-		"won",
-		"lost",
-		"games",
-		"win_pct_season",
-		"last1_win_pct",
-		"last3_win_pct",
-		"last5_win_pct",
-		"career_wins_to_date",
-		"career_losses_to_date",
-		"career_games_to_date",
-		"career_win_pct_to_date",
-		"tenure_with_team",
-		"post_wins",
-		"post_losses",
-		"playoff_games",
-		"playoff_win_pct_season",
-	]
-	for c in numeric_cols:
-		if c in df_out.columns:
-			df_out[c] = pd.to_numeric(df_out[c], errors="coerce")
-
-	return df_out
+    return perf.merge(rook, how="left", on=["year", "tmID"])
 
 
-def main() -> None:
-	coaches, teams = load_inputs()
-	df = compute_metrics(coaches, teams)
-	df.sort_values(["year", "coachID", "tmID"], inplace=True)
-	df.to_csv(OUT_PATH, index=False, encoding="utf-8")
+def pythagorean(PF, PA):
+    exp = 13.91
+    PF = pd.to_numeric(PF)
+    PA = pd.to_numeric(PA)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        pe = PF ** exp / (PF ** exp + PA ** exp)
+    return pe
+
+
+def compute_performance() -> pd.DataFrame:
+    coaches = load_coaches()
+    teams = load_teams()
+    players = load_players()
+
+    team_players = team_from_players(players)
+
+    # win_pct_team por soma dos coaches (fallback)
+    agg = coaches.groupby(["year", "tmID"], as_index=False)[["won", "lost"]].sum()
+    agg["games"] = agg["won"] + agg["lost"]
+    agg["win_pct_team"] = agg.apply(lambda r: _safe_div(r["won"], r["games"]), axis=1)
+
+    if teams is not None:
+        agg = agg.merge(teams, on=["year", "tmID"], how="left")
+        agg["pyth_exp"] = pythagorean(agg["PF"], agg["PA"])
+    else:
+        agg["confID"] = np.nan
+        agg["pyth_exp"] = np.nan
+
+    base = coaches.merge(agg[["year", "tmID", "confID", "win_pct_team", "pyth_exp"]], on=["year", "tmID"], how="left")
+
+    if team_players is not None:
+        base = base.merge(team_players, on=["year", "tmID"], how="left")
+
+    # Previsão de win rate:
+    # - Usar Pythagorean expectation como baseline (baseado em PF/PA)
+    # - Se não houver Pythagorean, usar win_pct_team como fallback
+    base["pred_win"] = base["pyth_exp"] if "pyth_exp" in base.columns else np.nan
+    base["pred_win"] = base["pred_win"].fillna(base["win_pct_team"])
+
+    base["over"] = base["win_pct"] - base["pred_win"]
+
+    def z(g):
+        """Calcula z-score. Se std=0 ou todos NaN, retorna 0 para todos."""
+        if g.isna().all():
+            return pd.Series([0.0] * len(g), index=g.index)
+        s = g.std(ddof=0)
+        if s == 0 or pd.isna(s):
+            return pd.Series([0.0] * len(g), index=g.index)
+        return (g - g.mean()) / s
+
+    base["z_win"] = base.groupby("year")["win_pct"].transform(z)
+    base["z_over"] = base.groupby("year")["over"].transform(z)
+    
+    # Calcular z_rock apenas se a coluna rookie_dev existir e tiver valores
+    if "rookie_dev" in base.columns:
+        base["z_rock"] = base.groupby("year")["rookie_dev"].transform(z)
+    else:
+        base["z_rock"] = 0.0
+
+    # Garantir que NaN seja substituído por 0 nos z-scores
+    base["z_win"] = base["z_win"].fillna(0)
+    base["z_over"] = base["z_over"].fillna(0)
+    base["z_rock"] = base["z_rock"].fillna(0)
+
+    base["performance"] = base["z_win"] + base["z_over"] + 1.2 * base["z_rock"]
+
+    out = base[["coachID", "year", "tmID", "confID", "won", "lost", "games", "performance"]].copy()
+    out.sort_values(["year", "coachID"], inplace=True)
+    out.to_csv(OUT_PATH, index=False)
+    return out
+
 
 if __name__ == "__main__":
-	main()
-
+    df = compute_performance()

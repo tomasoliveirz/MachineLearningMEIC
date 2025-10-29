@@ -94,7 +94,6 @@ def load_data() -> Dict[str, pd.DataFrame]:
     """Carrega todos os CSVs, aplicando correções de nomes e tipos.
 
     Localizações (com tolerância a nomes):
-    - data/processed/coach_performance.csv
     - data/processed/player_performance.csv
     - data/processed/team_season.csv
     - data/processed/teams_cleaned.csv
