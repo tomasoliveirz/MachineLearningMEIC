@@ -33,7 +33,7 @@ TEAM_STRENGTH_WEIGHTS = {
 # -----------------------------------------------------
 def _candidate_dirs() -> List[str]:
     here = os.path.dirname(os.path.abspath(__file__))
-    root = os.path.abspath(os.path.join(here, "..", ".."))  # projeto raiz
+    root = os.path.abspath(os.path.join(here, "..", "..", ".."))  # projeto raiz
     return [
         here,
         root,
@@ -104,7 +104,7 @@ def load_data() -> Dict[str, pd.DataFrame]:
     """
 
     # diretórios base conforme a árvore do projeto
-    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     processed_dir = os.path.join(root, "data", "processed")
     raw_dir = os.path.join(root, "data", "raw")
 
