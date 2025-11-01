@@ -4,20 +4,20 @@ Nº equipas (teste): 13
 Seasons no teste: [10]
 
 Métricas de Regressão:
- - R²:  1.0000
- - MAE: 0.0003
- - RMSE:0.0005
- - MAPE:0.06%
+ - R²:  0.6493
+ - MAE: 0.0455
+ - RMSE:0.0562
+ - MAPE:9.79%
 
 Métricas de Ranking (global):
- - Acerto exato de ranking: 84.62%
- - Acerto dentro de 1 posição: 84.62%
- - Spearman (global): 0.9889
+ - Acerto exato de ranking: 38.46%
+ - Acerto dentro de 1 posição: 92.31%
+ - Spearman (global): 0.8501
 
 Métricas por Conferência (médias):
- - Top-1 acertado (média por conf): 100.00%
- - Overlap Top-3 (média por conf): 100.00%
- - Spearman (média por conf): 0.9772
+ - Top-1 acertado (média por conf): 50.00%
+ - Overlap Top-3 (média por conf): 83.33%
+ - Spearman (média por conf): 0.8737
 
 Pesos de team_strength usados:
  - avg_player_perf: 0.3

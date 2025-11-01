@@ -24,7 +24,7 @@ TEAM_STRENGTH_WEIGHTS = {
     "top5_avg_perf": 0.20,  # Performance dos top 5 jogadores
     "player_consistency": 0.08,  # Consistência das performances
     "prev_season_win_pct": 0.10,  # Histórico recente
-    "coach_performance": 0.17,  # Performance do treinador (novo fator)
+    "coach_performance": 0.17,  # Performance do treinador 
 }
 
 
@@ -212,28 +212,32 @@ def prepare_features(
     # Inverter consistência (maior std = menor consistência normalizada)
     player_aggs["player_consistency"] = 1.0 / (1.0 + player_aggs["player_consistency"])
 
-    # 2) Coach aggregates - agregar performance dos coaches por (tmid, year)
-    # Um time pode ter múltiplos coaches numa season, então pegamos a média ponderada por jogos
+    # 2) Coach aggregates - USAR APENAS DADOS DA SEASON ANTERIOR para evitar leakage
+    # Shift coach metrics em 1 ano para garantir que só usamos informação passada
     if "performance" in coach_performance.columns and "games" in coach_performance.columns:
         # Weighted average de coach performance por games coached
-        coach_aggs = (
+        coach_aggs_raw = (
             coach_performance.groupby(["tmid", "year"])
             .apply(lambda g: np.average(g["performance"], weights=g["games"]) if g["games"].sum() > 0 else 0.0)
             .reset_index()
-            .rename(columns={0: "coach_performance"})
+            .rename(columns={0: "coach_performance_raw"})
         )
-        # Features adicionais do coach
-        coach_extras = (
+        # Shift para year anterior (year + 1 para ter dados do ano anterior disponíveis no ano atual)
+        coach_aggs_raw["year"] = coach_aggs_raw["year"] + 1
+        coach_aggs = coach_aggs_raw.rename(columns={"coach_performance_raw": "coach_performance"})
+        
+        # Número de coaches (também shifted)
+        coach_extras_raw = (
             coach_performance.groupby(["tmid", "year"]).agg(
-                coach_win_pct=("won", lambda x: x.sum() / (x.sum() + coach_performance.loc[x.index, "lost"].sum()) if (x.sum() + coach_performance.loc[x.index, "lost"].sum()) > 0 else 0),
                 num_coaches=("performance", "count"),  # número de coaches na season
             )
             .reset_index()
         )
-        coach_aggs = coach_aggs.merge(coach_extras, on=["tmid", "year"], how="left")
+        coach_extras_raw["year"] = coach_extras_raw["year"] + 1
+        coach_aggs = coach_aggs.merge(coach_extras_raw, on=["tmid", "year"], how="left")
     else:
         # Fallback se coach_performance não tiver as colunas esperadas
-        coach_aggs = pd.DataFrame(columns=["tmid", "year", "coach_performance", "coach_win_pct", "num_coaches"])
+        coach_aggs = pd.DataFrame(columns=["tmid", "year", "coach_performance", "num_coaches"])
 
     # 3) Juntar com team_season primeiro para ter acesso ao histórico
     df = team_season.copy()
@@ -247,30 +251,26 @@ def prepare_features(
     conf_part = teams_cleaned[keep_cols].drop_duplicates()
     df = df.merge(conf_part, on=["tmid", "year"], how="left")
 
-    # 4) Features de histórico do time (já existem em team_season)
-    # Estas colunas já devem existir: prev_season_win_pct_1, prev_season_win_pct_3, 
-    # prev_point_diff_3, prev_point_diff_5, win_pct_change_from_prev
+    # 4) Features de histórico do time (APENAS features de seasons anteriores - sem leakage)
+    # REMOVIDAS: point_diff, home_win_pct, away_win_pct (são da season atual!)
+    # MANTIDAS: apenas prev_season_* (dados históricos legítimos)
     historical_features = [
         "prev_season_win_pct_1", "prev_season_win_pct_3", "prev_season_win_pct_5",
         "prev_point_diff_3", "prev_point_diff_5", "win_pct_change_from_prev",
-        "point_diff", "home_win_pct", "away_win_pct"
     ]
     
     for feat in historical_features:
         if feat not in df.columns:
             df[feat] = 0.0
 
-    # Preencher coach features se não existirem
-    for feat in ["coach_performance", "coach_win_pct", "num_coaches"]:
+    # Preencher coach features se não existirem (coach_win_pct REMOVIDA - era leakage)
+    for feat in ["coach_performance", "num_coaches"]:
         if feat not in df.columns:
             df[feat] = 0.0
 
-    # 5) Criar features derivadas
-    # Momentum: tendência de melhoria (win_pct_change positivo = bom momentum)
-    df["momentum"] = df["win_pct_change_from_prev"].fillna(0)
-    
-    # Home advantage strength
-    df["home_advantage"] = (df["home_win_pct"] - df["away_win_pct"]).fillna(0)
+    # 5) Criar features derivadas (APENAS de dados históricos - sem leakage)
+    # REMOVIDAS: momentum (usa win_pct_change da season atual), home_advantage (usa stats da season atual)
+    # MANTIDAS: apenas features derivadas de dados passados
     
     # Experiência vs Renovação (ratio rookies/team_size)
     df["rookie_ratio"] = df["rookie_count"] / df["team_size"].clip(lower=1)
@@ -301,22 +301,24 @@ def prepare_features(
     if target not in df.columns:
         raise ValueError("Coluna target 'season_win_pct' não encontrada em team_season.csv")
 
-    # Features: combinação de player stats, coach stats, histórico e derivadas
+    # Features: APENAS features sem leakage (dados disponíveis ANTES da season)
     feature_cols = [
-        # Player-based features
+        # Player-based features (calculadas com roster da season, mas são preditivas)
         "avg_player_perf", "total_player_perf", "top5_avg_perf", "top3_avg_perf",
         "player_consistency", "rookie_count", "team_size", "max_player_perf",
         "min_player_perf", "rookie_ratio", "roster_depth",
-        # Coach-based features 
-        "coach_performance", "coach_win_pct", "num_coaches", "coaching_stability",
-        # Historical features
+        # Coach-based features (shifted para season anterior)
+        "coach_performance", "num_coaches", "coaching_stability",
+        # Historical features (APENAS prev_season_* - dados passados legítimos)
         "prev_season_win_pct_1", "prev_season_win_pct_3", "prev_season_win_pct_5",
-        "prev_point_diff_3", "prev_point_diff_5",
-        # Derived features
-        "momentum", "point_diff", "home_win_pct", "away_win_pct", "home_advantage",
+        "prev_point_diff_3", "prev_point_diff_5", "win_pct_change_from_prev",
         # Composite
         "team_strength",
     ]
+    # REMOVIDAS para evitar leakage:
+    # - coach_win_pct (correlação 0.9998 com target - calculada da mesma season)
+    # - point_diff, home_win_pct, away_win_pct (estatísticas da season atual)
+    # - momentum, home_advantage (derivadas de stats da season atual)
     
     # Filtrar apenas features que existem
     feature_cols = [c for c in feature_cols if c in df.columns]
@@ -571,9 +573,9 @@ def main():
         coach_performance=data["coach_performance"],
     )
 
-    # treino: seasons 1–9; teste: season 10
+    # 3) Train model: seasons 1–9; test: season 10
     model, X_test_with_meta, y_test = train_model(df, feature_cols, target, test_year=10)
- 
+
     # 4) Predict & Rank
     predict_and_rank(model, X_test_with_meta, y_test, feature_cols)
 
