@@ -1,0 +1,3 @@
+overall corr(perf, exp): 0.212
+ncaa corr(perf, exp): 0.190
+non_ncaa corr(perf, exp): 0.395

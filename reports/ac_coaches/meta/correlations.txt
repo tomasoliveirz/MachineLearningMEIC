@@ -1,0 +1,2 @@
+pearson rs vs po (career): 0.287
+spearman rs vs po (career): 0.308
