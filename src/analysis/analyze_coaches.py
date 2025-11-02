@@ -373,9 +373,9 @@ def main():
     ap = argparse.ArgumentParser(description="plots-first analysis of wnba coaches (code/comments lowercase; plot texts sentence case).")
     ap.add_argument("--coaches", default="data/raw/coaches.csv", help="path to coaches csv")
     ap.add_argument("--teams",   default="data/raw/teams.csv", help="path to teams csv")
-    ap.add_argument("--outdir",  default="reports/ac_coaches", help="output directory")
+    ap.add_argument("--outdir",  default="reports/coaches", help="output directory")
     ap.add_argument("--topk", type=int, default=15, help="top-k to display in charts")
-    ap.add_argument("--min_games", type=int, default=68, help="min career games for ranks (robustness)")
+    ap.add_argument("--min_games", type=int, default=34, help="min career games for ranks (robustness)")
     args = ap.parse_args()
 
     outdir = ensure_dir(Path(args.outdir))
