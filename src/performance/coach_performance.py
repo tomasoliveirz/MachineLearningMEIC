@@ -60,7 +60,7 @@ PROC.mkdir(parents=True, exist_ok=True)
 # Input paths
 COACHES_PATH = RAW / "coaches.csv"
 TEAMS_CLEANED_PATH = PROC / "teams_cleaned.csv"
-TEAM_SEASON_PATH = PROC / "team_season.csv"
+TEAM_SEASON_PATH = PROC / "team_season_statistics.csv"
 PLAYER_PERF_PATH = PROC / "player_performance.csv"
 
 OUT_PATH = PROC / "coach_performance.csv"

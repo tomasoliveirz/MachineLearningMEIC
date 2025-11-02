@@ -39,7 +39,7 @@ limpeza → engenharia de features → agregação por época → análise e rel
 
 2. Engenharia de features
    - make team_season
-     - a partir de teams_cleaned → data/processed/team_season.csv
+     - a partir de teams_cleaned → data/processed/team_season_statistics.csv
    - make rookies
      - usa players_cleaned + players_teams → data/processed/team_rookie_features.csv e player_rookie_year.csv
 
@@ -98,7 +98,7 @@ limpeza → engenharia de features → agregação por época → análise e rel
 
 ## Próximos passos (priorizados)
 1. Implementar skeleton em src/model/ranking_model.py:
-   - usar data/processed/player_performance.csv e team_season.csv para treinar modelo de ranking.
+   - usar data/processed/player_performance.csv e team_season_statistics.csv para treinar modelo de ranking.
 2. Testes unitários:
    - adicionar pytest + testes para cleaning, features e player_performance.
 3. Integração contínua:

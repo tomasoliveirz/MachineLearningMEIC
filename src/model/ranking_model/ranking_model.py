@@ -96,7 +96,7 @@ def load_data() -> Dict[str, pd.DataFrame]:
 
     Localizações (com tolerância a nomes):
     - data/processed/player_performance.csv
-    - data/processed/team_season.csv
+    - data/processed/team_season_statistics.csv
     - data/processed/teams_cleaned.csv
     - data/processed/coach_performance.csv
     - data/raw/series_post.csv
@@ -115,8 +115,8 @@ def load_data() -> Dict[str, pd.DataFrame]:
             "player_performance.csv",
         ]),
         "team_season": _find_csv([
-            os.path.join(processed_dir, "team_season.csv"),
-            "team_season.csv",
+            os.path.join(processed_dir, "team_season_statistics.csv"),
+            "team_season_statistics.csv",
         ]),
         "teams_cleaned": _find_csv([
             os.path.join(processed_dir, "teams_cleaned.csv"),
@@ -299,7 +299,7 @@ def prepare_features(
     # Target
     target = "season_win_pct"
     if target not in df.columns:
-        raise ValueError("Coluna target 'season_win_pct' não encontrada em team_season.csv")
+        raise ValueError("Coluna target 'season_win_pct' não encontrada em team_season_statistics.csv")
 
     # Features: APENAS features sem leakage (dados disponíveis ANTES da season)
     feature_cols = [

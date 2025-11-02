@@ -41,7 +41,7 @@ def _load_players_teams():
 
 # load team season metrics (used to add form variables later)
 def _load_team_season():
-    ts = PROC_DIR / "team_season.csv"
+    ts = PROC_DIR / "team_season_statistics.csv"
     return pd.read_csv(ts) if ts.exists() else None
 
 # label which rows correspond to rookie seasons

@@ -1,0 +1,36 @@
+Número total de equipes analisadas: 20
+Equipes ainda em atividade: 13
+Equipes que deixaram de existir ou mudaram: 7
+Período total coberto: 1 até 10 (10 anos)
+
+Equipes em atividade:
+  - Atlanta Dream (ATL)
+  - Chicago Sky (CHI)
+  - Connecticut Sun (CON)
+  - Detroit Shock (DET)
+  - Indiana Fever (IND)
+  - Los Angeles Sparks (LAS)
+  - Minnesota Lynx (MIN)
+  - New York Liberty (NYL)
+  - Phoenix Mercury (PHO)
+  - Sacramento Monarchs (SAC)
+  - San Antonio Silver Stars (SAS)
+  - Seattle Storm (SEA)
+  - Washington Mystics (WAS)
+
+Equipes que deixaram de existir ou mudaram:
+  - Charlotte Sting (CHA) - Última temporada: 7
+  - Cleveland Rockers (CLE) - Última temporada: 4
+  - Houston Comets (HOU) - Última temporada: 9
+  - Miami Sol (MIA) - Última temporada: 3
+  - Orlando Miracle (ORL) - Última temporada: 3
+  - Portland Fire (POR) - Última temporada: 3
+  - Utah Starzz (UTA) - Última temporada: 3
+
+Estatísticas gerais de todas as equipes:
+  Total de vitórias: 2366
+  Total de derrotas: 2366
+  Total de jogos: 4732
+
+Equipe com mais vitórias: Los Angeles Sparks (220 vitórias)
+Equipe com melhor taxa de vitórias (mín. 3 temporadas): Los Angeles Sparks (65.87%)
