@@ -73,12 +73,17 @@ def is_rookie(player_stats: pd.DataFrame) -> pd.Series:
 
 def calculate_player_performance(
     player_stats: pd.DataFrame,
-    seasons_back: int = 9,
-    decay: float = 0.6,
+    seasons_back: int = 3,
+    decay: float = 0.65,
     weight_by_minutes: bool = True,
+<<<<<<< HEAD:src/performance/player_perfomance.py/player_performance.py
     rookie_min_minutes: float = 100.0,
     rookie_prior_strength: float = 3600.0,
     weights_path: Path = None
+=======
+    rookie_min_minutes: float = 150.0,
+    rookie_prior_strength: float = 900.0
+>>>>>>> f2b351f (Player preflight analysis):src/performance/player_performance.py
 ) -> pd.DataFrame:
     """
     compute a per-player performance metric using season history and explicit rookie rules.
@@ -93,8 +98,8 @@ def calculate_player_performance(
     - each season contributes a per-36 value built from a weighted linear combo of stats:
         weights: pts=1.0, reb=0.7, ast=0.7, stl=1.2, blk=1.2, tov=-0.7
         per36 = (raw_score / minutes) * 36, with minutes from 'mp' (fallback 'g'); tiny minutes are floored.
-    - a team factor adjustment is applied if 'team_pts' or 'season_team_pts' exists:
-        multiply by team_pts / median(team_pts) (or season_team_pts / median(season_team_pts)).
+    - no same-season team factor is applied to avoid leakage; if previous-season context is
+      attached (e.g., 'prev_team_pts' or 'prev_win_pct'), it may be used to scale environment.
 
     rookie-specific rules:
     - a rookie is the first dataset season for a player (excluding the dataset's minimum year).
@@ -190,62 +195,77 @@ def _pos_to_role_series(pos_series: pd.Series) -> pd.Series:
 
 def _compute_per36_metrics(df: pd.DataFrame, weights_path: Path = None) -> Tuple[pd.Series, pd.Series]:
     """
-    Calcula per36 e minutos totais por linha, usando pesos adaptativos por posição.
+    Calcula per36 e minutos totais por linha com base APENAS nas estatísticas disponíveis.
+    Se apenas pontos/minutos existem, retorna explicitamente PTS/36.
     Retorna (per36, minutes_total).
     
     Args:
         df: DataFrame with player statistics
         weights_path: Optional path to position_weights.json
     """
-    def _safe_col(name: str) -> pd.Series:
-        return df[name] if name in df.columns else pd.Series(0.0, index=df.index, dtype=float)
+    def _col(name: str) -> pd.Series:
+        return df[name] if name in df.columns else pd.Series(np.nan, index=df.index, dtype=float)
 
-    # Reconstruir rebotes preferindo 'trb' senão orb+drb
-    if 'trb' in df.columns:
-        reb_col = _safe_col('trb')
-    else:
-        reb_col = _safe_col('orb') + _safe_col('drb')
-
-    # Mapear posição -> categoria de papel
+    # Mapear posição -> categoria (apenas para ajustar pesos quando stats existem)
     role = _pos_to_role_series(df['pos'] if 'pos' in df.columns else pd.Series(['Unknown'] * len(df), index=df.index))
+<<<<<<< HEAD:src/performance/player_perfomance.py/player_performance.py
 
     # Load position weights (from JSON or defaults)
     role_weights = _load_position_weights(weights_path)
 
     # Construir DataFrame de pesos por linha
+=======
+    role_weights = {
+        'center':          {'pts':1.00, 'reb':1.10, 'ast':0.40, 'stl':0.60, 'blk':1.50, 'tov':-0.80},
+        'forward_center':  {'pts':1.00, 'reb':0.95, 'ast':0.60, 'stl':0.80, 'blk':1.20, 'tov':-0.70},
+        'forward':         {'pts':1.00, 'reb':0.85, 'ast':0.60, 'stl':0.90, 'blk':0.90, 'tov':-0.70},
+        'wing':            {'pts':1.00, 'reb':0.70, 'ast':0.80, 'stl':1.20, 'blk':0.60, 'tov':-0.70},
+        'guard':           {'pts':1.00, 'reb':0.40, 'ast':1.10, 'stl':1.50, 'blk':0.40, 'tov':-0.90},
+        'unknown':         {'pts':1.00, 'reb':0.70, 'ast':0.70, 'stl':1.00, 'blk':1.00, 'tov':-0.70},
+    }
+>>>>>>> f2b351f (Player preflight analysis):src/performance/player_performance.py
     weights_df = pd.DataFrame([role_weights.get(r, role_weights['unknown']) for r in role.values], index=df.index)
 
-    # Ler colunas de estatísticas (ou zeros)
-    pts = _safe_col('pts').astype(float)
-    ast = _safe_col('ast').astype(float)
-    stl = _safe_col('stl').astype(float)
-    blk = _safe_col('blk').astype(float)
-    tov = _safe_col('tov').astype(float)
+    # Estatísticas disponíveis (REAL column names from players_teams.csv)
+    pts = pd.to_numeric(_col('points'), errors='coerce')
+    ast = pd.to_numeric(_col('assists'), errors='coerce')
+    stl = pd.to_numeric(_col('steals'), errors='coerce')
+    blk = pd.to_numeric(_col('blocks'), errors='coerce')
+    tov = pd.to_numeric(_col('turnovers'), errors='coerce')
+    reb = pd.to_numeric(_col('rebounds'), errors='coerce')
 
-    # Raw score ponderado por posição
-    raw_score = (
-        weights_df['pts'].mul(pts) +
-        weights_df['reb'].mul(reb_col) +
-        weights_df['ast'].mul(ast) +
-        weights_df['stl'].mul(stl) +
-        weights_df['blk'].mul(blk) +
-        weights_df['tov'].mul(tov)
-    )
+    # Construir score apenas com colunas realmente presentes
+    raw_parts = []
+    if 'points' in df.columns:
+        raw_parts.append(weights_df['pts'].mul(pts))
+    if 'rebounds' in df.columns:
+        raw_parts.append(weights_df['reb'].mul(reb))
+    if 'assists' in df.columns:
+        raw_parts.append(weights_df['ast'].mul(ast))
+    if 'steals' in df.columns:
+        raw_parts.append(weights_df['stl'].mul(stl))
+    if 'blocks' in df.columns:
+        raw_parts.append(weights_df['blk'].mul(blk))
+    if 'turnovers' in df.columns:
+        raw_parts.append(weights_df['tov'].mul(tov))
 
-    # Compute minutes (prefer 'mp', fallback to 'g')
-    mp = _safe_col('mp').astype(float)
-    g = _safe_col('g').astype(float)
-    minutes = mp.where(mp > 0, g)
+    if raw_parts:
+        raw_score = sum(raw_parts)
+    else:
+        raw_score = pd.Series(np.nan, index=df.index, dtype=float)
+
+    # Minutos (REAL column name)
+    minutes = pd.to_numeric(_col('minutes'), errors='coerce')
     minutes = minutes.replace({0: np.nan})
 
-    # Aplicar mínimo efetivo para per36 (evitar inflar por poucos minutos)
+    # Piso mínimo para per36
     minutes_for_per36 = minutes.copy()
     mask_small = minutes_for_per36.notna() & (minutes_for_per36 < MIN_EFFECTIVE_MINUTES)
     minutes_for_per36.loc[mask_small] = MIN_EFFECTIVE_MINUTES
 
     per36 = raw_score.divide(minutes_for_per36).multiply(36)
 
-    # minutos totais usados para ponderações posteriores (sempre em mp quando disponível)
+    # Minutos totais para ponderações (sempre em mp quando disponível)
     minutes_total = mp.fillna(0.0)
 
     return per36, minutes_total
@@ -349,18 +369,20 @@ def _compute_weighted_history(
 
 def _apply_team_factor(df: pd.DataFrame, perf_series: pd.Series) -> pd.Series:
     """
-    apply a multiplicative team environment factor based on team scoring.
+    Do NOT apply same-season team scaling (to avoid leakage).
+    If previous-season context exists (e.g., 'prev_team_pts' or 'prev_win_pct'),
+    apply a mild multiplicative factor normalized by median.
     """
     tf = pd.Series(1.0, index=df.index)
 
-    if 'team_pts' in df.columns:
-        med = df['team_pts'].median(skipna=True)
+    if 'prev_team_pts' in df.columns:
+        med = df['prev_team_pts'].median(skipna=True)
         if med and med > 0:
-            tf = df['team_pts'] / med
-    elif 'season_team_pts' in df.columns:
-        med = df['season_team_pts'].median(skipna=True)
+            tf = df['prev_team_pts'] / med
+    elif 'prev_win_pct' in df.columns:
+        med = df['prev_win_pct'].median(skipna=True)
         if med and med > 0:
-            tf = df['season_team_pts'] / med
+            tf = df['prev_win_pct'] / med
 
     return perf_series * tf
 
@@ -428,10 +450,9 @@ def _apply_shrinkage_corrections(
         obs_minutes_val = minutes.at[idx]
         is_rookie_player = rookie_mask.at[idx]
 
-        # choose the appropriate prior
+        # choose the appropriate prior (global-only for rookies)
         if is_rookie_player:
-            tmID = df.at[idx, 'tmID'] if 'tmID' in df.columns else None
-            prior_mean_val = rookie_team_prior.get(tmID, global_rookie_mean) if tmID else global_rookie_mean
+            prior_mean_val = global_rookie_mean
         else:
             prior_mean_val = global_per36_mean
 
@@ -540,7 +561,11 @@ def main():
         return
 
     # Keep only relevant columns and ensure missing stat columns are present (filled with 0)
+<<<<<<< HEAD:src/performance/player_perfomance.py/player_performance.py
     wanted = ['bioID', 'year', 'tmID', 'mp', 'pts', 'trb', 'ast', 'stl', 'blk', 'tov', 'pos']
+=======
+    wanted = ['bioID', 'year', 'tmID', 'minutes', 'points', 'rebounds', 'assists', 'steals', 'blocks', 'turnovers']
+>>>>>>> f2b351f (Player preflight analysis):src/performance/player_performance.py
     sample = raw.copy()
     for c in wanted:
         if c not in sample.columns:
@@ -552,10 +577,16 @@ def main():
         res = calculate_player_performance(
             sample,
             seasons_back=3,
+<<<<<<< HEAD:src/performance/player_perfomance.py/player_performance.py
             decay=0.7,
             rookie_min_minutes=100.0,
             rookie_prior_strength=3600.0,
             weights_path=weights_path
+=======
+            decay=0.65,
+            rookie_min_minutes=150.0,
+            rookie_prior_strength=900.0
+>>>>>>> f2b351f (Player preflight analysis):src/performance/player_performance.py
         )
     except Exception as e:
         print(f"Error computing player performance: {e}", file=sys.stderr)

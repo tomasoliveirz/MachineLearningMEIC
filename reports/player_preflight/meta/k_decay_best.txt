@@ -1,0 +1,4 @@
+best_k=3
+best_decay=0.4
+best_r2=0.490
+n=954

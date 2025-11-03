@@ -1,0 +1,12 @@
+⚠️  Maximum IPW weight = 9.04
+   4 year(s) have weights > 4.0:
+   - k=6: P=0.234, weight=4.28
+   - k=7: P=0.219, weight=4.57
+   - k=8: P=0.191, weight=5.23
+   - k=9: P=0.111, weight=9.04
+
+RECOMMENDATION:
+  When applying IPW in models, consider:
+  1. Clamping weights: w_clamped = min(ipw_weight, 4.0)
+  2. Restricting analysis to k <= 5 or 6
+  3. Using robust estimators that downweight extreme values

@@ -1,0 +1,4 @@
+same_year_team_factor: NO
+team-based rookie prior (same season): NO
+global rookie prior (prev seasons only): YES
+walk-forward validation for k/decay: YES

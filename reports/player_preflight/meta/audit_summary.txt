@@ -1,0 +1,10 @@
+(bioID, year, tmID) duplicates after stint-aggregation: 0
+Rows with all-zero core stats: 3
+Minutes source present: minutes=True | fallback g=False
+minutes: min=0.00 | median=459.00 | p95=1086.00 | p99=1166.25
+points: min=0.00 | median=129.00 | p95=497.00 | p99=615.50
+rebounds: min=0.00 | median=63.00 | p95=215.00 | p99=295.50
+assists: min=0.00 | median=26.00 | p95=122.00 | p99=172.50
+steals: min=0.00 | median=16.00 | p95=53.25 | p99=72.25
+blocks: min=0.00 | median=4.00 | p95=36.00 | p99=64.00
+turnovers: min=0.00 | median=32.00 | p95=87.00 | p99=106.25

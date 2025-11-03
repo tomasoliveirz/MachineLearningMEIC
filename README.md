@@ -6,13 +6,16 @@ limpeza → engenharia de features → agregação por época → análise e rel
 ---
 
 ## Estrutura do projecto (resumo)
-- data/raw/             — CSVs originais (players.csv, teams.csv, players_teams.csv, ...)
-- data/processed/       — resultados da limpeza e features
-- src/ac/cleaning/      — scripts de limpeza
-- src/ac/features/      — engenharia de features (team season, rookies)
-- src/ac/analysis/      — geração de gráficos e relatórios
-- reports/              — figuras e tabelas (raw / cleaned)
-- Makefile              — automação da pipeline
+- data/raw/                      — CSVs originais (players.csv, teams.csv, players_teams.csv, ...)
+- data/processed/                — resultados da limpeza e features
+- src/ac/cleaning/               — scripts de limpeza
+- src/ac/features/               — engenharia de features (team season, rookies)
+- src/ac/analysis/               — geração de gráficos e relatórios
+- src/analysis/player_preflight/ — calibração de parâmetros de performance
+- src/utils/                     — funções reutilizáveis
+- reports/                       — figuras e tabelas (raw / cleaned)
+- docs/                          — documentação detalhada
+- Makefile                       — automação da pipeline
 - requirements.txt
 
 ---
@@ -43,11 +46,19 @@ limpeza → engenharia de features → agregação por época → análise e rel
    - make rookies
      - usa players_cleaned + players_teams → data/processed/team_rookie_features.csv e player_rookie_year.csv
 
-3. Cálculo de performance por jogador
+3. Calibração de parâmetros (Player Performance Preflight)
+   - make preflight
+     - Calibra: rookie_min_minutes, rookie_prior_strength, seasons_back, decay
+     - Gera: reports/player_preflight/preflight_report.md
+     - Documentação: docs/player_preflight/
+   - **Importante:** Executar sempre que dados mudarem significativamente
+
+4. Cálculo de performance por jogador
    - Workflow principal implementado em src/player_performance.py
+   - Usa parâmetros de src/analysis/player_preflight/config.py
    - make all executa a sequência: clean_players → clean_teams → team_season → rookies → analyze_cleaned
 
-4. Análise e relatórios
+5. Análise e relatórios
    - make analyze_raw     — gera figuras/tabelas usando dados raw
    - make analyze_cleaned — gera figuras/tabelas usando dados limpos
    - Saídas: reports/figures/{raw,cleaned}/ e reports/tables/{raw,cleaned}/

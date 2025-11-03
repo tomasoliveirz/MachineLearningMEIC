@@ -1,0 +1,1 @@
+chosen_rookie_min_minutes=400 (criterion: lowest RMSE among candidates; rmse=3.268)
