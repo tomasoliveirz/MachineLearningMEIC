@@ -76,14 +76,9 @@ def calculate_player_performance(
     seasons_back: int = 3,
     decay: float = 0.65,
     weight_by_minutes: bool = True,
-<<<<<<< HEAD:src/performance/player_perfomance.py/player_performance.py
-    rookie_min_minutes: float = 100.0,
-    rookie_prior_strength: float = 3600.0,
-    weights_path: Path = None
-=======
     rookie_min_minutes: float = 150.0,
-    rookie_prior_strength: float = 900.0
->>>>>>> f2b351f (Player preflight analysis):src/performance/player_performance.py
+    rookie_prior_strength: float = 900.0,
+    weights_path: Path | None = None,
 ) -> pd.DataFrame:
     """
     compute a per-player performance metric using season history and explicit rookie rules.
@@ -208,23 +203,11 @@ def _compute_per36_metrics(df: pd.DataFrame, weights_path: Path = None) -> Tuple
 
     # Mapear posição -> categoria (apenas para ajustar pesos quando stats existem)
     role = _pos_to_role_series(df['pos'] if 'pos' in df.columns else pd.Series(['Unknown'] * len(df), index=df.index))
-<<<<<<< HEAD:src/performance/player_perfomance.py/player_performance.py
 
-    # Load position weights (from JSON or defaults)
-    role_weights = _load_position_weights(weights_path)
-
-    # Construir DataFrame de pesos por linha
-=======
-    role_weights = {
-        'center':          {'pts':1.00, 'reb':1.10, 'ast':0.40, 'stl':0.60, 'blk':1.50, 'tov':-0.80},
-        'forward_center':  {'pts':1.00, 'reb':0.95, 'ast':0.60, 'stl':0.80, 'blk':1.20, 'tov':-0.70},
-        'forward':         {'pts':1.00, 'reb':0.85, 'ast':0.60, 'stl':0.90, 'blk':0.90, 'tov':-0.70},
-        'wing':            {'pts':1.00, 'reb':0.70, 'ast':0.80, 'stl':1.20, 'blk':0.60, 'tov':-0.70},
-        'guard':           {'pts':1.00, 'reb':0.40, 'ast':1.10, 'stl':1.50, 'blk':0.40, 'tov':-0.90},
-        'unknown':         {'pts':1.00, 'reb':0.70, 'ast':0.70, 'stl':1.00, 'blk':1.00, 'tov':-0.70},
-    }
->>>>>>> f2b351f (Player preflight analysis):src/performance/player_performance.py
-    weights_df = pd.DataFrame([role_weights.get(r, role_weights['unknown']) for r in role.values], index=df.index)
+    # load weights from file (if available) or fallback to defaults in _load_position_weights
+    loaded_weights = _load_position_weights(weights_path)
+    # Build a DataFrame of weights aligned with rows
+    weights_df = pd.DataFrame([loaded_weights.get(r, loaded_weights.get('unknown')) for r in role.values], index=df.index)
 
     # Estatísticas disponíveis (REAL column names from players_teams.csv)
     pts = pd.to_numeric(_col('points'), errors='coerce')
@@ -265,8 +248,8 @@ def _compute_per36_metrics(df: pd.DataFrame, weights_path: Path = None) -> Tuple
 
     per36 = raw_score.divide(minutes_for_per36).multiply(36)
 
-    # Minutos totais para ponderações (sempre em mp quando disponível)
-    minutes_total = mp.fillna(0.0)
+    # Minutos totais para ponderações
+    minutes_total = minutes.fillna(0.0)
 
     return per36, minutes_total
 
@@ -539,34 +522,34 @@ def main():
         print(f"Error reading CSV {raw_path}: {e}", file=sys.stderr)
         return
 
-    # Rename columns to match expected format (only rename if present)
-    rename_map = {
-        'playerID': 'bioID',
-        'minutes': 'mp',
-        'points': 'pts',
-        'rebounds': 'trb',
-        'assists': 'ast',
-        'steals': 'stl',
-        'blocks': 'blk',
-        'turnovers': 'tov',
-        'year': 'year',
-        'tmID': 'tmID'
+    # Normalize multiple possible column name conventions so downstream code
+    # always uses the canonical names: 'bioID','year','tmID','minutes','points',
+    # 'rebounds','assists','steals','blocks','turnovers'
+    sample = raw.copy()
+    # common aliases -> canonical
+    alias_map = {
+        'mp': 'minutes', 'pts': 'points', 'trb': 'rebounds', 'ast': 'assists',
+        'stl': 'steals', 'blk': 'blocks', 'tov': 'turnovers', 'playerID': 'bioID'
     }
-    intersect_map = {k: v for k, v in rename_map.items() if k in raw.columns}
-    raw = raw.rename(columns=intersect_map)
+    for alt, canonical in alias_map.items():
+        if alt in sample.columns and canonical not in sample.columns:
+            sample[canonical] = sample[alt]
+
+    # ensure bioID exists
+    if 'bioID' not in sample.columns and 'playerID' in sample.columns:
+        sample['bioID'] = sample['playerID']
+
+    # fallback for team id
+    if 'tmID' not in sample.columns and 'teamID' in sample.columns:
+        sample['tmID'] = sample['teamID']
 
     # Required base columns
-    if 'bioID' not in raw.columns or 'year' not in raw.columns:
+    if 'bioID' not in sample.columns or 'year' not in sample.columns:
         print("Input CSV must contain 'playerID'/'bioID' and 'year' columns.", file=sys.stderr)
         return
 
     # Keep only relevant columns and ensure missing stat columns are present (filled with 0)
-<<<<<<< HEAD:src/performance/player_perfomance.py/player_performance.py
-    wanted = ['bioID', 'year', 'tmID', 'mp', 'pts', 'trb', 'ast', 'stl', 'blk', 'tov', 'pos']
-=======
     wanted = ['bioID', 'year', 'tmID', 'minutes', 'points', 'rebounds', 'assists', 'steals', 'blocks', 'turnovers']
->>>>>>> f2b351f (Player preflight analysis):src/performance/player_performance.py
-    sample = raw.copy()
     for c in wanted:
         if c not in sample.columns:
             sample[c] = 0.0
@@ -577,16 +560,10 @@ def main():
         res = calculate_player_performance(
             sample,
             seasons_back=3,
-<<<<<<< HEAD:src/performance/player_perfomance.py/player_performance.py
-            decay=0.7,
-            rookie_min_minutes=100.0,
-            rookie_prior_strength=3600.0,
-            weights_path=weights_path
-=======
             decay=0.65,
             rookie_min_minutes=150.0,
-            rookie_prior_strength=900.0
->>>>>>> f2b351f (Player preflight analysis):src/performance/player_performance.py
+            rookie_prior_strength=900.0,
+            weights_path=weights_path
         )
     except Exception as e:
         print(f"Error computing player performance: {e}", file=sys.stderr)
