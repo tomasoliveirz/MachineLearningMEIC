@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Tuple, Dict
 
+import json
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -8,6 +9,46 @@ import sys
 
 MIN_EFFECTIVE_MINUTES = 12.0 # minimum minutes to avoid inflating per36
 MIN_TRUST_MINUTES = 36.0 # minimum minutes to fully trust observed per36
+
+
+def _load_position_weights(weights_path: Path = None) -> Dict[str, Dict[str, float]]:
+    """
+    Load position-specific weights from JSON file.
+    
+    Args:
+        weights_path: Path to position_weights.json. If None, uses default location.
+    
+    Returns:
+        Dictionary mapping role -> stat weights
+    """
+    # Default weights (fallback)
+    default_weights = {
+        'center':          {'pts': 1.00, 'reb': 1.10, 'ast': 0.40, 'stl': 0.60, 'blk': 1.50, 'tov': -0.80},
+        'forward_center':  {'pts': 1.00, 'reb': 0.95, 'ast': 0.60, 'stl': 0.80, 'blk': 1.20, 'tov': -0.70},
+        'forward':         {'pts': 1.00, 'reb': 0.85, 'ast': 0.60, 'stl': 0.90, 'blk': 0.90, 'tov': -0.70},
+        'wing':            {'pts': 1.00, 'reb': 0.70, 'ast': 0.80, 'stl': 1.20, 'blk': 0.60, 'tov': -0.70},
+        'guard':           {'pts': 1.00, 'reb': 0.40, 'ast': 1.10, 'stl': 1.50, 'blk': 0.40, 'tov': -0.90},
+        'unknown':         {'pts': 1.00, 'reb': 0.70, 'ast': 0.70, 'stl': 1.00, 'blk': 1.00, 'tov': -0.70},
+    }
+    
+    if weights_path is None:
+        base = Path(__file__).resolve().parents[3]
+        weights_path = base / "data" / "processed" / "position_weights.json"
+    
+    if not weights_path.exists():
+        print(f"[INFO] Position weights file not found at {weights_path}")
+        print(f"[INFO] Using default hardcoded weights")
+        return default_weights
+    
+    try:
+        with open(weights_path, 'r', encoding='utf-8') as f:
+            loaded_weights = json.load(f)
+        print(f"[OK] Loaded position weights from {weights_path}")
+        return loaded_weights
+    except Exception as e:
+        print(f"[WARN] Error loading weights from {weights_path}: {e}")
+        print(f"[INFO] Using default hardcoded weights")
+        return default_weights
 
 
 def is_rookie(player_stats: pd.DataFrame) -> pd.Series:
@@ -36,7 +77,8 @@ def calculate_player_performance(
     decay: float = 0.6,
     weight_by_minutes: bool = True,
     rookie_min_minutes: float = 100.0,
-    rookie_prior_strength: float = 3600.0
+    rookie_prior_strength: float = 3600.0,
+    weights_path: Path = None
 ) -> pd.DataFrame:
     """
     compute a per-player performance metric using season history and explicit rookie rules.
@@ -70,6 +112,7 @@ def calculate_player_performance(
     - weight_by_minutes (bool): whether to scale weights by minutes per season
     - rookie_min_minutes (float): minutes threshold to fully trust rookie per36
     - rookie_prior_strength (float): prior strength in "equivalent minutes" (default 3600 ≈ 100 full games)
+    - weights_path (Path): optional path to position_weights.json
 
     returns:
     - dataframe with columns 'performance' (float, 3 decimals) and 'rookie' (bool), preserving other columns.
@@ -79,12 +122,12 @@ def calculate_player_performance(
 
     if 'year' not in df.columns or 'bioID' not in df.columns:
         # fallback: if required keys are missing, just compute raw per36 and fill missing with mean
-        per36, _ = _compute_per36_metrics(df)
+        per36, _ = _compute_per36_metrics(df, weights_path)
         df['performance'] = per36.fillna(per36.mean()).astype(float).round(3)
         return df
 
     # step 2: base metrics (per36 and minutes) and rookie flag
-    df['_per36'], df['_minutes'] = _compute_per36_metrics(df)
+    df['_per36'], df['_minutes'] = _compute_per36_metrics(df, weights_path)
     df['rookie'] = is_rookie(df)
 
     # step 3: build rookie priors (global and by team)
@@ -145,10 +188,14 @@ def _pos_to_role_series(pos_series: pd.Series) -> pd.Series:
     return pos.map(_map)
 
 
-def _compute_per36_metrics(df: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
+def _compute_per36_metrics(df: pd.DataFrame, weights_path: Path = None) -> Tuple[pd.Series, pd.Series]:
     """
     Calcula per36 e minutos totais por linha, usando pesos adaptativos por posição.
     Retorna (per36, minutes_total).
+    
+    Args:
+        df: DataFrame with player statistics
+        weights_path: Optional path to position_weights.json
     """
     def _safe_col(name: str) -> pd.Series:
         return df[name] if name in df.columns else pd.Series(0.0, index=df.index, dtype=float)
@@ -162,15 +209,8 @@ def _compute_per36_metrics(df: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
     # Mapear posição -> categoria de papel
     role = _pos_to_role_series(df['pos'] if 'pos' in df.columns else pd.Series(['Unknown'] * len(df), index=df.index))
 
-    # Definir pesos por papel (pts, reb, ast, stl, blk, tov)
-    role_weights = {
-        'center':          {'pts':1.00, 'reb':1.10, 'ast':0.40, 'stl':0.60, 'blk':1.50, 'tov':-0.80},
-        'forward_center':  {'pts':1.00, 'reb':0.95, 'ast':0.60, 'stl':0.80, 'blk':1.20, 'tov':-0.70},
-        'forward':         {'pts':1.00, 'reb':0.85, 'ast':0.60, 'stl':0.90, 'blk':0.90, 'tov':-0.70},
-        'wing':            {'pts':1.00, 'reb':0.70, 'ast':0.80, 'stl':1.20, 'blk':0.60, 'tov':-0.70},
-        'guard':           {'pts':1.00, 'reb':0.40, 'ast':1.10, 'stl':1.50, 'blk':0.40, 'tov':-0.90},
-        'unknown':         {'pts':1.00, 'reb':0.70, 'ast':0.70, 'stl':1.00, 'blk':1.00, 'tov':-0.70},
-    }
+    # Load position weights (from JSON or defaults)
+    role_weights = _load_position_weights(weights_path)
 
     # Construir DataFrame de pesos por linha
     weights_df = pd.DataFrame([role_weights.get(r, role_weights['unknown']) for r in role.values], index=df.index)
@@ -423,18 +463,54 @@ def _finalize_performance_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         df = df[cols]
 
     # drop temporary columns
-    df.drop(columns=[c for c in ['_per36', '_minutes'] if c in df.columns], inplace=True)
+    cols_to_drop = [c for c in ['_per36', '_minutes'] if c in df.columns]
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop)
 
     return df
 
 
 def main():
 
-    base = Path(__file__).resolve().parents[2]
+    base = Path(__file__).resolve().parents[3]
     raw_path = base / "data" / "raw" / "players_teams.csv"
+    weights_path = base / "data" / "processed" / "position_weights.json"
+    
     if not raw_path.exists():
         print(f"Input file not found: {raw_path}", file=sys.stderr)
         return
+
+    # Check if position weights exist; if not, generate them
+    if not weights_path.exists():
+        print("=" * 60)
+        print("Position weights not found. Generating weights...")
+        print("=" * 60)
+        
+        # Import and run the weight creation module
+        try:
+            import subprocess
+            create_weights_script = base / "src" / "performance" / "player_perfomance.py" / "create_weights.py"
+            
+            if create_weights_script.exists():
+                result = subprocess.run(
+                    [sys.executable, str(create_weights_script)],
+                    capture_output=True,
+                    text=True
+                )
+                print(result.stdout)
+                if result.returncode != 0:
+                    print(f"Warning: Weight generation failed: {result.stderr}", file=sys.stderr)
+                    print("Continuing with default weights...\n")
+            else:
+                print(f"Warning: create_weights.py not found at {create_weights_script}", file=sys.stderr)
+                print("Continuing with default weights...\n")
+        except Exception as e:
+            print(f"Warning: Could not generate weights: {e}", file=sys.stderr)
+            print("Continuing with default weights...\n")
+    
+    print("\n" + "=" * 60)
+    print("Calculating Player Performance Metrics")
+    print("=" * 60 + "\n")
 
     try:
         raw = pd.read_csv(raw_path)
@@ -464,7 +540,7 @@ def main():
         return
 
     # Keep only relevant columns and ensure missing stat columns are present (filled with 0)
-    wanted = ['bioID', 'year', 'tmID', 'mp', 'pts', 'trb', 'ast', 'stl', 'blk', 'tov']
+    wanted = ['bioID', 'year', 'tmID', 'mp', 'pts', 'trb', 'ast', 'stl', 'blk', 'tov', 'pos']
     sample = raw.copy()
     for c in wanted:
         if c not in sample.columns:
@@ -478,7 +554,8 @@ def main():
             seasons_back=3,
             decay=0.7,
             rookie_min_minutes=100.0,
-            rookie_prior_strength=3600.0
+            rookie_prior_strength=3600.0,
+            weights_path=weights_path
         )
     except Exception as e:
         print(f"Error computing player performance: {e}", file=sys.stderr)
@@ -490,9 +567,13 @@ def main():
 
     try:
         res.to_csv(out_file, index=False, encoding='utf-8')
-        print(f"CSV saved to: {out_file}")
+        print(f"\n[OK] CSV saved to: {out_file}")
     except Exception as e:
         print(f"Error saving CSV to {out_file}: {e}", file=sys.stderr)
+    
+    print("\n" + "=" * 60)
+    print("Performance calculation completed!")
+    print("=" * 60)
 
 
 if __name__ == '__main__':

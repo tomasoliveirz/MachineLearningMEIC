@@ -1,0 +1,89 @@
+{
+  "weights": {
+    "guard": {
+      "pts": 1.0,
+      "reb": 0.153,
+      "ast": 0.193,
+      "stl": 0.055,
+      "blk": 0.021,
+      "tov": -0.058
+    },
+    "wing": {
+      "pts": 1.0,
+      "reb": 0.226,
+      "ast": 0.145,
+      "stl": 0.064,
+      "blk": 0.039,
+      "tov": -0.076
+    },
+    "forward": {
+      "pts": 1.0,
+      "reb": 0.263,
+      "ast": 0.121,
+      "stl": 0.059,
+      "blk": 0.049,
+      "tov": -0.058
+    },
+    "forward_center": {
+      "pts": 1.0,
+      "reb": 0.249,
+      "ast": 0.081,
+      "stl": 0.053,
+      "blk": 0.074,
+      "tov": -0.043
+    },
+    "center": {
+      "pts": 1.0,
+      "reb": 0.231,
+      "ast": 0.104,
+      "stl": 0.049,
+      "blk": 0.101,
+      "tov": -0.063
+    },
+    "unknown": {
+      "pts": 1.0,
+      "reb": 0.7,
+      "ast": 0.7,
+      "stl": 1.0,
+      "blk": 1.0,
+      "tov": -0.7
+    }
+  },
+  "metadata": {
+    "description": "Position-specific statistical weights for player performance calculation",
+    "normalization": "All weights normalized so that pts = 1.0",
+    "training_method": "Ridge regression with cross-validation",
+    "features": "Per-36 statistics + advanced efficiency metrics"
+  },
+  "evaluation": {
+    "guard": {
+      "n_samples": 547,
+      "cv_score": 0.9990173226519079,
+      "best_alpha": 0.1
+    },
+    "wing": {
+      "n_samples": 193,
+      "cv_score": 0.9986379064088897,
+      "best_alpha": 0.1
+    },
+    "forward": {
+      "n_samples": 428,
+      "cv_score": 0.9991845279043773,
+      "best_alpha": 0.1
+    },
+    "forward_center": {
+      "n_samples": 177,
+      "cv_score": 0.9991895197971058,
+      "best_alpha": 0.1
+    },
+    "center": {
+      "n_samples": 192,
+      "cv_score": 0.9994477539402602,
+      "best_alpha": 0.1
+    },
+    "unknown": {
+      "n_samples": 0,
+      "cv_score": null
+    }
+  }
+}
