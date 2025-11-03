@@ -1,76 +1,41 @@
-# Player Performance Preflight Report
+# Player Performance Preflight Report (Basic Mode)
 
 ## Data hygiene
 - Missingness heatmap: figures/missingness_heatmap.png
 - Yearly coverage: tables/yearly_coverage.csv
 - Audit summary: meta/audit_summary.txt
+- Outliers (top 20): tables/outliers_top20_z.csv
 
-## Leakage
-- Checklist: meta/leakage_checklist.txt
+## Correlations
+- Heatmap: figures/correlations_heatmap.png
+- Details: meta/correlations.txt
 
-## Stability vs minutes
-- Plot: figures/per36_vs_minutes.png
-- Decision: see meta/stability.txt
-
-### Rookie minutes threshold
-
-| min_minutes | RMSE vs next-year | Decision |
-|-------------|-------------------|----------|
-| 150 | ... |  |
-| 300 | ... |  |
-| 400 | 3.268 |  ✓ **CHOSEN** |
-| 600 | ... |  |
-
-→ **Chosen: 400 min** (minimizes RMSE, n=1 sufficient)
-
-## Rookie prior calibration
-- Grid plot: figures/rookie_prior_grid.png
-- Grid table: tables/rookie_prior_grid.csv
-- Sensitivity: meta/sensitivity.txt
+## Per-36 stability
+- Visual inspection: figures/per36_vs_minutes.png
+- Interpretation: Low minutes → high variance. Threshold choice TBD.
 
 ## Temporal dependence
-- k/decay table: tables/walkforward_k_decay.csv
+- k/decay optimization: tables/walkforward_k_decay.csv
 - Best-by-k plot: figures/r2_vs_seasons_back.png
 - Best parameters: meta/k_decay_best.txt
 
-**Decision:** k=3, decay=0.60
-- R² maximizes at decay=0.40 (R²=0.490)
-- Using decay=0.60 for interpretability (ΔR² < 0.01)
+**Optimal:** k=3, decay=0.40 (R²=0.490, n=954)
 
-## Predictive validation
-- Global metrics: meta/validation.txt
-- Stratified: tables/validation_strata.csv
-
-## Final recommended parameters
-
-Import from `src/analysis/player_preflight/config.py`:
-
-```python
-from src.analysis.player_preflight.config import PREFLIGHT_PARAMS
-
-MIN_EFFECTIVE_MINUTES = 12
-rookie_min_minutes = 400
-rookie_prior_strength = 900  # equivalent minutes
-seasons_back = 3
-decay = 0.6
-weight_by_minutes = True
-```
-
-## Where these parameters are used
-
-These settings are consumed by:
-- `src/performance/player_performance.py` (main performance model)
-- `src/features/rookies.py` (rookie prior + thresholds)
-
-To change behavior, update `src/analysis/player_preflight/config.py` and re-run:
-```bash
-make preflight
-```
+## Leakage checklist
+- See: meta/leakage_checklist.txt
 
 ---
 
+## Core parameters (config.py)
+
+```python
+MIN_EFFECTIVE_MINUTES = 12  # floor for per-36 calc
+SEASONS_BACK = 3  # temporal window
+DECAY = 0.6  # weight for older seasons
+WEIGHT_BY_MINUTES = True  # minutes-weighted averages
+```
+
 **Notes:**
-- `rookie_min_minutes=400` minimizes RMSE vs next-year per36 for rookies
-- `rookie_prior_strength=900` = optimal Bayesian shrinkage strength (equiv. to 900 minutes of league-avg rookie)
-- `seasons_back=3` and `decay=0.6` optimize walk-forward R²
-- Rows with <12 minutes use 12-minute floor to avoid extreme rates
+- Temporal optimization uses walk-forward validation (no data leakage)
+- Per-36 floor (12 min) avoids extreme rates
+- Advanced features (rookie priors, survival bias) disabled for basic mode

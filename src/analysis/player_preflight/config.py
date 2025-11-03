@@ -18,27 +18,19 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PreflightConfig:
-    """Calibrated parameters from player performance preflight analysis."""
+    """Core parameters for player performance analysis (basic mode)."""
     
     # Minimum minutes threshold to avoid extreme per-36 rates
     MIN_EFFECTIVE_MINUTES: int = 12
-    
-    # Minimum minutes for including rookies in calibration (RMSE-optimized)
-    ROOKIE_MIN_MINUTES: int = 400
-    
-    # Bayesian shrinkage strength for rookies (equivalent minutes of prior)
-    ROOKIE_PRIOR_STRENGTH: int = 900
     
     # Number of previous seasons to include in weighted average
     SEASONS_BACK: int = 3
     
     # Exponential decay weight for older seasons
-    # Note: R² maximizes at 0.40, but we use 0.60 for interpretability (ΔR² < 0.01)
     # Interpretation: year t-1 gets 60% weight of year t, t-2 gets 36%, etc.
     DECAY: float = 0.60
     
     # Weight seasons by minutes played (vs equal weighting)
-    # If True: season with 2000 minutes weighs more than season with 100 minutes
     WEIGHT_BY_MINUTES: bool = True
 
 

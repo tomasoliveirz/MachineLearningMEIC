@@ -2,19 +2,19 @@
 # -*- coding: utf-8 -*-
 
 """
-Player Performance Preflight - Main orchestrator
+Player Performance Preflight - Basic Mode
 
-Runs comprehensive data quality audit, parameter calibration, and validation
-for the player performance model.
+Runs core data quality audit and temporal optimization for player performance.
+
+FOCUS: Establish per36 metric, understand data, optimize temporal weights.
 
 Outputs (under reports/player_preflight/):
-- figures/: visualizations of data quality, stability, calibration
-- tables/: detailed calibration grids and validation results
-- meta/: text summaries and recommended parameters
-- preflight_report.md: consolidated markdown report
+- figures/: data quality visualizations, per36 stability, temporal R²
+- tables/: coverage, outliers
+- meta/: audit summaries, correlations, best k/decay
+- preflight_report.md: consolidated report
 
-Recommended parameters are written to the report and can be used in
-src/performance/player_performance.py
+Advanced features (rookies priors, survival bias, validation) disabled for now.
 """
 
 import sys
@@ -38,20 +38,15 @@ from src.analysis.player_preflight.data_audit import (
 )
 from src.analysis.player_preflight.stability_minutes import (
     plot_per36_vs_minutes,
-    choose_minutes_threshold_by_rmse,
-)
-from src.analysis.player_preflight.rookie_priors import (
-    calibrate_rookie_prior,
 )
 from src.analysis.player_preflight.temporal_dependence import (
     autocorr_year_to_year,
     optimize_decay_k,
 )
-from src.analysis.player_preflight.validation import (
-    predictive_validation,
-    validation_stratified,
-    sensitivity_analysis,
-)
+
+# Advanced modules (disabled for basic mode):
+# from src.analysis.player_preflight.rookie_priors import calibrate_rookie_prior
+# from src.analysis.player_preflight.validation import predictive_validation, validation_stratified, sensitivity_analysis
 
 
 # Paths
@@ -109,18 +104,18 @@ def load_players_teams() -> pd.DataFrame:
 def main():
     """Main preflight orchestrator."""
     print("=" * 60)
-    print("PLAYER PERFORMANCE PREFLIGHT")
+    print("PLAYER PERFORMANCE PREFLIGHT (BASIC MODE)")
     print("=" * 60)
     
     # Load data
-    print("\n[1/7] Loading data...")
+    print("\n[1/4] Loading data...")
     players_stints = load_players_teams()
     players_agg = aggregate_stints(players_stints)
     players_agg["rookie"] = label_rookies(players_agg)
     print(f"  ✓ Loaded {len(players_agg)} player-year-team rows")
 
     # 1) Audit & hygiene
-    print("\n[2/7] Data quality audit...")
+    print("\n[2/4] Data quality audit...")
     write_audit_summary(players_stints, players_agg, META / "audit_summary.txt")
     plot_missingness_heatmap(
         players_agg, 
@@ -136,35 +131,16 @@ def main():
     print("  ✓ Audit summary, missingness heatmap, outliers")
 
     # 2) Correlations
-    print("\n[3/7] Computing correlations...")
+    print("\n[3/4] Computing correlations...")
     plot_correlations(players_agg, FIG / "correlations_heatmap.png", META / "correlations.txt")
     print("  ✓ Correlation matrix")
-
-    # 3) Stability and rookie minutes threshold
-    print("\n[4/7] Per-36 stability analysis...")
+    
+    # 3) Per-36 stability (visual only, no auto-threshold)
     plot_per36_vs_minutes(players_agg, FIG / "per36_vs_minutes.png")
-    chosen_min, chosen_rmse = choose_minutes_threshold_by_rmse(
-        players_agg, 
-        candidates=[150, 300, 400, 600]
-    )
-    META.joinpath("stability.txt").write_text(
-        f"chosen_rookie_min_minutes={chosen_min} (criterion: lowest RMSE among candidates; rmse={chosen_rmse:.3f})\n",
-        encoding="utf-8",
-    )
-    print(f"  ✓ Chosen rookie_min_minutes = {chosen_min} (RMSE = {chosen_rmse:.3f})")
+    print("  ✓ Per-36 vs minutes plot (visual inspection)")
 
-    # 4) Rookie prior calibration
-    print("\n[5/7] Rookie prior calibration...")
-    _ = calibrate_rookie_prior(
-        players_agg, 
-        strengths=[900, 1800, 3600, 7200], 
-        out_png=FIG / "rookie_prior_grid.png",
-        out_csv=TABLES / "rookie_prior_grid.csv"
-    )
-    print("  ✓ Rookie prior grid (see figures/rookie_prior_grid.png)")
-
-    # 5) Temporal dependence
-    print("\n[6/7] Temporal dependence (k, decay)...")
+    # 4) Temporal dependence (k, decay)
+    print("\n[4/4] Temporal dependence (k, decay)...")
     _ = autocorr_year_to_year(players_agg)
     k_best, decay_best, r2_best, n = optimize_decay_k(
         players_agg,
@@ -174,156 +150,76 @@ def main():
     )
     print(f"  ✓ Best k={k_best}, decay={decay_best:.2f}, R²={r2_best:.3f} (n={n})")
 
-    # 6) Validation
-    print("\n[7/7] Predictive validation...")
-    _ = predictive_validation(players_agg, META / "validation.txt")
-    _ = validation_stratified(players_agg, TABLES / "validation_strata.csv")
-    sensitivity_analysis(players_agg, META / "sensitivity.txt", FIG, TABLES)
-    print("  ✓ Validation metrics")
-
-    # 8) Leakage checklist
+    # 5) Leakage checklist
     leak_lines = [
         "same_year_team_factor: NO",
-        "team-based rookie prior (same season): NO",
-        "global rookie prior (prev seasons only): YES",
+        "team-based features (same season): NO",
         "walk-forward validation for k/decay: YES",
     ]
     META.joinpath("leakage_checklist.txt").write_text("\n".join(leak_lines) + "\n", encoding="utf-8")
 
-    # 9) Consolidated markdown report
-    # Read best rookie prior from sensitivity
-    best_rookie_prior = 900  # default
-    sens_path = META / "sensitivity.txt"
-    if sens_path.exists():
-        for line in sens_path.read_text().split("\n"):
-            if "best rookie_prior_strength" in line:
-                try:
-                    best_rookie_prior = int(line.split("≈")[1].strip())
-                except:
-                    pass
-
-    # Determine decay recommendation based on R² differences
-    decay_csv = TABLES / "walkforward_k_decay.csv"
-    decay_recommendation = f"{decay_best:.2f}"
-    decay_rationale = ""
-    if decay_csv.exists():
-        grid = pd.read_csv(decay_csv)
-        if not grid.empty and "r2" in grid.columns:
-            # Check if differences are small
-            k_best_rows = grid[grid["k"] == k_best].sort_values("r2", ascending=False)
-            if len(k_best_rows) >= 2:
-                max_r2 = k_best_rows["r2"].iloc[0]
-                second_r2 = k_best_rows["r2"].iloc[1]
-                diff = max_r2 - second_r2
-                if diff < 0.01 and decay_best < 0.5:
-                    # Small difference and decay is low - consider recommending higher decay
-                    decay_recommendation = "0.6-0.65"
-                    decay_rationale = f" (max R²={max_r2:.3f} at decay={decay_best:.2f}, but differences <0.01; prefer higher decay for interpretability)"
-                else:
-                    decay_rationale = f" (R²={r2_best:.3f})"
-
+    # 6) Simple markdown report
     report = REPORTS / "preflight_report.md"
-    # Build rookie threshold comparison table
-    threshold_table = []
-    threshold_table.append("| min_minutes | RMSE vs next-year | Decision |")
-    threshold_table.append("|-------------|-------------------|----------|")
-    for cand in [150, 300, 400, 600]:
-        marker = " ✓ **CHOSEN**" if cand == chosen_min else ""
-        # Just show which was chosen (detailed data is in validation_strata.csv)
-        rmse_val = f"{chosen_rmse:.3f}" if cand == chosen_min else "..."
-        threshold_table.append(f"| {cand} | {rmse_val} | {marker} |")
-    
     report.write_text(
         "\n".join([
-            "# Player Performance Preflight Report",
+            "# Player Performance Preflight Report (Basic Mode)",
             "",
             "## Data hygiene",
             f"- Missingness heatmap: figures/missingness_heatmap.png",
             f"- Yearly coverage: tables/yearly_coverage.csv",
             f"- Audit summary: meta/audit_summary.txt",
+            f"- Outliers (top 20): tables/outliers_top20_z.csv",
             "",
-            "## Leakage",
-            f"- Checklist: meta/leakage_checklist.txt",
+            "## Correlations",
+            f"- Heatmap: figures/correlations_heatmap.png",
+            f"- Details: meta/correlations.txt",
             "",
-            "## Stability vs minutes",
-            f"- Plot: figures/per36_vs_minutes.png",
-            f"- Decision: see meta/stability.txt",
-            "",
-            "### Rookie minutes threshold",
-            "",
-            *threshold_table,
-            "",
-            f"→ **Chosen: {chosen_min} min** (minimizes RMSE, n={len([x for x in [150,300,400,600] if x==chosen_min])} sufficient)",
-            "",
-            "## Rookie prior calibration",
-            f"- Grid plot: figures/rookie_prior_grid.png",
-            f"- Grid table: tables/rookie_prior_grid.csv",
-            f"- Sensitivity: meta/sensitivity.txt",
+            "## Per-36 stability",
+            f"- Visual inspection: figures/per36_vs_minutes.png",
+            f"- Interpretation: Low minutes → high variance. Threshold choice TBD.",
             "",
             "## Temporal dependence",
-            f"- k/decay table: tables/walkforward_k_decay.csv",
+            f"- k/decay optimization: tables/walkforward_k_decay.csv",
             f"- Best-by-k plot: figures/r2_vs_seasons_back.png",
             f"- Best parameters: meta/k_decay_best.txt",
             f"",
-            f"**Decision:** k={k_best}, decay={PREFLIGHT_PARAMS.DECAY:.2f}",
-            f"- R² maximizes at decay={decay_best:.2f} (R²={r2_best:.3f})",
-            f"- Using decay={PREFLIGHT_PARAMS.DECAY:.2f} for interpretability (ΔR² < 0.01)",
+            f"**Optimal:** k={k_best}, decay={decay_best:.2f} (R²={r2_best:.3f}, n={n})",
             "",
-            "## Predictive validation",
-            f"- Global metrics: meta/validation.txt",
-            f"- Stratified: tables/validation_strata.csv",
-            "",
-            "## Final recommended parameters",
-            f"",
-            f"Import from `src/analysis/player_preflight/config.py`:",
-            f"",
-            f"```python",
-            f"from src.analysis.player_preflight.config import PREFLIGHT_PARAMS",
-            f"",
-            f"MIN_EFFECTIVE_MINUTES = {PREFLIGHT_PARAMS.MIN_EFFECTIVE_MINUTES}",
-            f"rookie_min_minutes = {PREFLIGHT_PARAMS.ROOKIE_MIN_MINUTES}",
-            f"rookie_prior_strength = {PREFLIGHT_PARAMS.ROOKIE_PRIOR_STRENGTH}  # equivalent minutes",
-            f"seasons_back = {PREFLIGHT_PARAMS.SEASONS_BACK}",
-            f"decay = {PREFLIGHT_PARAMS.DECAY}",
-            f"weight_by_minutes = {PREFLIGHT_PARAMS.WEIGHT_BY_MINUTES}",
-            f"```",
-            "",
-            "## Where these parameters are used",
-            "",
-            "These settings are consumed by:",
-            "- `src/performance/player_performance.py` (main performance model)",
-            "- `src/features/rookies.py` (rookie prior + thresholds)",
-            "",
-            "To change behavior, update `src/analysis/player_preflight/config.py` and re-run:",
-            "```bash",
-            "make preflight",
-            "```",
+            "## Leakage checklist",
+            f"- See: meta/leakage_checklist.txt",
             "",
             "---",
             "",
+            "## Core parameters (config.py)",
+            "",
+            "```python",
+            f"MIN_EFFECTIVE_MINUTES = {PREFLIGHT_PARAMS.MIN_EFFECTIVE_MINUTES}  # floor for per-36 calc",
+            f"SEASONS_BACK = {PREFLIGHT_PARAMS.SEASONS_BACK}  # temporal window",
+            f"DECAY = {PREFLIGHT_PARAMS.DECAY}  # weight for older seasons",
+            f"WEIGHT_BY_MINUTES = {PREFLIGHT_PARAMS.WEIGHT_BY_MINUTES}  # minutes-weighted averages",
+            "```",
+            "",
             "**Notes:**",
-            f"- `rookie_min_minutes={PREFLIGHT_PARAMS.ROOKIE_MIN_MINUTES}` minimizes RMSE vs next-year per36 for rookies",
-            f"- `rookie_prior_strength={PREFLIGHT_PARAMS.ROOKIE_PRIOR_STRENGTH}` = optimal Bayesian shrinkage strength (equiv. to {PREFLIGHT_PARAMS.ROOKIE_PRIOR_STRENGTH} minutes of league-avg rookie)",
-            f"- `seasons_back={PREFLIGHT_PARAMS.SEASONS_BACK}` and `decay={PREFLIGHT_PARAMS.DECAY}` optimize walk-forward R²",
-            f"- Rows with <{PREFLIGHT_PARAMS.MIN_EFFECTIVE_MINUTES} minutes use {PREFLIGHT_PARAMS.MIN_EFFECTIVE_MINUTES}-minute floor to avoid extreme rates",
+            f"- Temporal optimization uses walk-forward validation (no data leakage)",
+            f"- Per-36 floor ({PREFLIGHT_PARAMS.MIN_EFFECTIVE_MINUTES} min) avoids extreme rates",
+            f"- Advanced features (rookie priors, survival bias) disabled for basic mode",
         ]) + "\n",
         encoding="utf-8",
     )
 
     print("\n" + "=" * 60)
-    print(f"✅ PREFLIGHT COMPLETE")
+    print(f"✅ PREFLIGHT COMPLETE (BASIC MODE)")
     print("=" * 60)
     print(f"\nReports saved to: {REPORTS}")
-    print(f"\nCalibrated parameters (see config.py):")
+    print(f"\nCore parameters (see config.py):")
     print(f"  - MIN_EFFECTIVE_MINUTES = {PREFLIGHT_PARAMS.MIN_EFFECTIVE_MINUTES}")
-    print(f"  - rookie_min_minutes = {PREFLIGHT_PARAMS.ROOKIE_MIN_MINUTES}")
-    print(f"  - rookie_prior_strength = {PREFLIGHT_PARAMS.ROOKIE_PRIOR_STRENGTH}")
     print(f"  - seasons_back = {PREFLIGHT_PARAMS.SEASONS_BACK}")
-    print(f"  - decay = {PREFLIGHT_PARAMS.DECAY} (R² max at {decay_best:.2f}, ΔR²<0.01)")
+    print(f"  - decay = {PREFLIGHT_PARAMS.DECAY} (optimal: {decay_best:.2f}, R²={r2_best:.3f})")
     print(f"  - weight_by_minutes = {PREFLIGHT_PARAMS.WEIGHT_BY_MINUTES}")
     print(f"\nNext steps:")
     print(f"  1. Review {report.name}")
-    print(f"  2. Import PREFLIGHT_PARAMS in your models\n")
+    print(f"  2. Inspect per36_vs_minutes.png and choose threshold")
+    print(f"  3. Fine-tune per36 metric weights if needed\n")
 
 
 if __name__ == "__main__":
