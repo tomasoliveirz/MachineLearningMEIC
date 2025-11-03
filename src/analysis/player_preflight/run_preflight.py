@@ -47,9 +47,6 @@ from src.analysis.player_preflight.temporal_dependence import (
     autocorr_year_to_year,
     optimize_decay_k,
 )
-from src.analysis.player_preflight.survival_bias import (
-    write_survival_weights,
-)
 from src.analysis.player_preflight.validation import (
     predictive_validation,
     validation_stratified,
@@ -116,14 +113,14 @@ def main():
     print("=" * 60)
     
     # Load data
-    print("\n[1/8] Loading data...")
+    print("\n[1/7] Loading data...")
     players_stints = load_players_teams()
     players_agg = aggregate_stints(players_stints)
     players_agg["rookie"] = label_rookies(players_agg)
     print(f"  ✓ Loaded {len(players_agg)} player-year-team rows")
 
     # 1) Audit & hygiene
-    print("\n[2/8] Data quality audit...")
+    print("\n[2/7] Data quality audit...")
     write_audit_summary(players_stints, players_agg, META / "audit_summary.txt")
     plot_missingness_heatmap(
         players_agg, 
@@ -139,12 +136,12 @@ def main():
     print("  ✓ Audit summary, missingness heatmap, outliers")
 
     # 2) Correlations
-    print("\n[3/8] Computing correlations...")
+    print("\n[3/7] Computing correlations...")
     plot_correlations(players_agg, FIG / "correlations_heatmap.png", META / "correlations.txt")
     print("  ✓ Correlation matrix")
 
     # 3) Stability and rookie minutes threshold
-    print("\n[4/8] Per-36 stability analysis...")
+    print("\n[4/7] Per-36 stability analysis...")
     plot_per36_vs_minutes(players_agg, FIG / "per36_vs_minutes.png")
     chosen_min, chosen_rmse = choose_minutes_threshold_by_rmse(
         players_agg, 
@@ -157,7 +154,7 @@ def main():
     print(f"  ✓ Chosen rookie_min_minutes = {chosen_min} (RMSE = {chosen_rmse:.3f})")
 
     # 4) Rookie prior calibration
-    print("\n[5/8] Rookie prior calibration...")
+    print("\n[5/7] Rookie prior calibration...")
     _ = calibrate_rookie_prior(
         players_agg, 
         strengths=[900, 1800, 3600, 7200], 
@@ -167,7 +164,7 @@ def main():
     print("  ✓ Rookie prior grid (see figures/rookie_prior_grid.png)")
 
     # 5) Temporal dependence
-    print("\n[6/8] Temporal dependence (k, decay)...")
+    print("\n[6/7] Temporal dependence (k, decay)...")
     _ = autocorr_year_to_year(players_agg)
     k_best, decay_best, r2_best, n = optimize_decay_k(
         players_agg,
@@ -177,17 +174,8 @@ def main():
     )
     print(f"  ✓ Best k={k_best}, decay={decay_best:.2f}, R²={r2_best:.3f} (n={n})")
 
-    # 6) Survival bias
-    print("\n[7/8] Survival bias (IPW)...")
-    write_survival_weights(
-        players_agg, 
-        TABLES / "survival_weights.csv",
-        META / "survival_ipw_warnings.txt"
-    )
-    print("  ✓ Survival weights (see meta/survival_ipw_warnings.txt)")
-
-    # 7) Validation
-    print("\n[8/8] Predictive validation...")
+    # 6) Validation
+    print("\n[7/7] Predictive validation...")
     _ = predictive_validation(players_agg, META / "validation.txt")
     _ = validation_stratified(players_agg, TABLES / "validation_strata.csv")
     sensitivity_analysis(players_agg, META / "sensitivity.txt", FIG, TABLES)
@@ -281,11 +269,6 @@ def main():
             f"- R² maximizes at decay={decay_best:.2f} (R²={r2_best:.3f})",
             f"- Using decay={PREFLIGHT_PARAMS.DECAY:.2f} for interpretability (ΔR² < 0.01)",
             "",
-            "## Survival bias",
-            f"- Survival weights: tables/survival_weights.csv (k, P(k), w=1/P)",
-            f"- IPW warnings: meta/survival_ipw_warnings.txt",
-            f"- **Use `get_ipw_weights(df, max_weight=4.0)` in models** (auto-clamps)",
-            "",
             "## Predictive validation",
             f"- Global metrics: meta/validation.txt",
             f"- Stratified: tables/validation_strata.csv",
@@ -303,7 +286,6 @@ def main():
             f"seasons_back = {PREFLIGHT_PARAMS.SEASONS_BACK}",
             f"decay = {PREFLIGHT_PARAMS.DECAY}",
             f"weight_by_minutes = {PREFLIGHT_PARAMS.WEIGHT_BY_MINUTES}",
-            f"max_ipw_weight = {PREFLIGHT_PARAMS.MAX_IPW_WEIGHT}",
             f"```",
             "",
             "## Where these parameters are used",
@@ -324,7 +306,6 @@ def main():
             f"- `rookie_prior_strength={PREFLIGHT_PARAMS.ROOKIE_PRIOR_STRENGTH}` = optimal Bayesian shrinkage strength (equiv. to {PREFLIGHT_PARAMS.ROOKIE_PRIOR_STRENGTH} minutes of league-avg rookie)",
             f"- `seasons_back={PREFLIGHT_PARAMS.SEASONS_BACK}` and `decay={PREFLIGHT_PARAMS.DECAY}` optimize walk-forward R²",
             f"- Rows with <{PREFLIGHT_PARAMS.MIN_EFFECTIVE_MINUTES} minutes use {PREFLIGHT_PARAMS.MIN_EFFECTIVE_MINUTES}-minute floor to avoid extreme rates",
-            f"- IPW: use `get_ipw_weights()` which auto-clamps to {PREFLIGHT_PARAMS.MAX_IPW_WEIGHT} (see meta/survival_ipw_warnings.txt)",
         ]) + "\n",
         encoding="utf-8",
     )
@@ -339,11 +320,10 @@ def main():
     print(f"  - rookie_prior_strength = {PREFLIGHT_PARAMS.ROOKIE_PRIOR_STRENGTH}")
     print(f"  - seasons_back = {PREFLIGHT_PARAMS.SEASONS_BACK}")
     print(f"  - decay = {PREFLIGHT_PARAMS.DECAY} (R² max at {decay_best:.2f}, ΔR²<0.01)")
-    print(f"  - max_ipw_weight = {PREFLIGHT_PARAMS.MAX_IPW_WEIGHT}")
+    print(f"  - weight_by_minutes = {PREFLIGHT_PARAMS.WEIGHT_BY_MINUTES}")
     print(f"\nNext steps:")
     print(f"  1. Review {report.name}")
-    print(f"  2. Import PREFLIGHT_PARAMS in your models")
-    print(f"  3. Check IPW warnings in meta/survival_ipw_warnings.txt\n")
+    print(f"  2. Import PREFLIGHT_PARAMS in your models\n")
 
 
 if __name__ == "__main__":

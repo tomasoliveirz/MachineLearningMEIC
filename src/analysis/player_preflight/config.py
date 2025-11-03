@@ -34,13 +34,12 @@ class PreflightConfig:
     
     # Exponential decay weight for older seasons
     # Note: R² maximizes at 0.40, but we use 0.60 for interpretability (ΔR² < 0.01)
+    # Interpretation: year t-1 gets 60% weight of year t, t-2 gets 36%, etc.
     DECAY: float = 0.60
     
     # Weight seasons by minutes played (vs equal weighting)
+    # If True: season with 2000 minutes weighs more than season with 100 minutes
     WEIGHT_BY_MINUTES: bool = True
-    
-    # Maximum IPW weight (clamp extreme survival bias corrections)
-    MAX_IPW_WEIGHT: float = 4.0
 
 
 # Singleton instance

@@ -37,11 +37,6 @@
 - R² maximizes at decay=0.40 (R²=0.490)
 - Using decay=0.60 for interpretability (ΔR² < 0.01)
 
-## Survival bias
-- Survival weights: tables/survival_weights.csv (k, P(k), w=1/P)
-- IPW warnings: meta/survival_ipw_warnings.txt
-- **Use `get_ipw_weights(df, max_weight=4.0)` in models** (auto-clamps)
-
 ## Predictive validation
 - Global metrics: meta/validation.txt
 - Stratified: tables/validation_strata.csv
@@ -59,7 +54,6 @@ rookie_prior_strength = 900  # equivalent minutes
 seasons_back = 3
 decay = 0.6
 weight_by_minutes = True
-max_ipw_weight = 4.0
 ```
 
 ## Where these parameters are used
@@ -80,4 +74,3 @@ make preflight
 - `rookie_prior_strength=900` = optimal Bayesian shrinkage strength (equiv. to 900 minutes of league-avg rookie)
 - `seasons_back=3` and `decay=0.6` optimize walk-forward R²
 - Rows with <12 minutes use 12-minute floor to avoid extreme rates
-- IPW: use `get_ipw_weights()` which auto-clamps to 4.0 (see meta/survival_ipw_warnings.txt)
