@@ -19,7 +19,7 @@
 - Best-by-k plot: figures/r2_vs_seasons_back.png
 - Best parameters: meta/k_decay_best.txt
 
-**Optimal:** k=3, decay=0.40 (R²=0.490, n=954)
+**Optimal:** k=3, decay=0.40 (R²=0.530, n=954)
 
 ## Leakage checklist
 - See: meta/leakage_checklist.txt

@@ -1,5 +1,0 @@
-corr(per36_current, per36_next) = 0.693
-corr(PTS/36, per36_next) = 0.624
-corr(per36_current, minutes_next) = 0.443
-MAE(per36 vs next) = 3.126
-RMSE(per36 vs next) = 4.268

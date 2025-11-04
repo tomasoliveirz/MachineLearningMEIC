@@ -1,4 +1,0 @@
-best rookie_prior_strength ≈ 900
-autocorr year-to-year (proxy for decay ~ 0.50): 0.786
-autocorr year-to-year (proxy for decay ~ 0.60): 0.786
-autocorr year-to-year (proxy for decay ~ 0.70): 0.786
