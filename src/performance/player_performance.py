@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-Calculate player performance using position-specific weights applied to per-90 stats.
+Calculate player performance using position-specific weights applied to per-36 stats.
 
 This module computes a composite performance metric for each player-season by:
   1. Aggregating multi-stint rows to (bioID, year, tmID) level
-  2. Converting raw stats to per-90-minute rates
+  2. Converting raw stats to per-36-minute rates
   3. Applying position-specific weights from weights_positions.json
   4. Using team/position means as fallback for low-minute players
 """
@@ -54,22 +54,22 @@ def _collect_stats_from_weights(weights: dict):
     return sorted(stats)
 
 
-def _compute_per90_columns(df: pd.DataFrame, stats: list, normalize_per90: bool):
-    """Ensure stat columns exist and optionally compute per90 temporary cols.
+def _compute_per36_columns(df: pd.DataFrame, stats: list, normalize_per36: bool):
+    """Ensure stat columns exist and optionally compute per36 temporary cols.
     Returns mapping stat -> column to use for weighting.
     """
-    if normalize_per90:
+    if normalize_per36:
         mins = df["minutes"].astype(float)
         for s in stats:
-            per90_col = f"__{s}_per90"
+            per36_col = f"__{s}_per36"
             if s in df.columns:
                 df[s] = pd.to_numeric(df[s], errors="coerce").fillna(0.0)
-                df[per90_col] = 0.0
+                df[per36_col] = 0.0
                 positive_mask = mins > 0
-                df.loc[positive_mask, per90_col] = df.loc[positive_mask, s] * 90.0 / mins[positive_mask]
+                df.loc[positive_mask, per36_col] = df.loc[positive_mask, s] * 36.0 / mins[positive_mask]
             else:
-                df[per90_col] = 0.0
-        stat_cols = {s: f"__{s}_per90" for s in stats}
+                df[per36_col] = 0.0
+        stat_cols = {s: f"__{s}_per36" for s in stats}
     else:
         for s in stats:
             if s not in df.columns:
@@ -141,9 +141,9 @@ def _apply_min_minutes_fallback(df: pd.DataFrame, min_minutes: int, perf_col: st
             df.drop(columns=["team_pos_mean", "team_mean"], inplace=True, errors="ignore")
 
 
-def _remove_per90_columns(df: pd.DataFrame, stats: list):
+def _remove_per36_columns(df: pd.DataFrame, stats: list):
     for s in stats:
-        tmp = f"__{s}_per90"
+        tmp = f"__{s}_per36"
         if tmp in df.columns:
             df.drop(columns=[tmp], inplace=True)
 
@@ -152,14 +152,14 @@ def calculate_player_performance(
     weights_path: str = "src/performance/weights_positions.json",
     min_minutes: int = 400,
     fallback: str = "team_position_mean", 
-    normalize_per90: bool = True,
+    normalize_per36: bool = True,
     perf_col: str = "performance",
 ) -> pd.DataFrame:
     """Calculate position-weighted performance metric for players.
     
     This function computes a composite performance score by:
       1. Loading position-specific weights from a JSON file
-      2. (If normalize_per90=True) Converting raw stats to per-90-minute rates
+      2. (If normalize_per36=True) Converting raw stats to per-36-minute rates
       3. Applying weights to stats: performance = Σ(weight_i × stat_i)
       4. For low-minute players (< min_minutes), replacing with team/position means
     
@@ -173,7 +173,7 @@ def calculate_player_performance(
         weights_path: Path to JSON file with position-specific stat weights
         min_minutes: Minimum minutes threshold; players below this get fallback values
         fallback: Fallback method (only "team_position_mean" supported)
-        normalize_per90: If True, convert stats to per-90 rates before applying weights.
+        normalize_per36: If True, convert stats to per-36 rates before applying weights.
                         If False, apply weights directly to raw totals.
         perf_col: Name of output performance column
     
@@ -229,8 +229,8 @@ def calculate_player_performance(
     # Collect stats referenced in weights (this is the source of truth)
     stats = _collect_stats_from_weights(weights)
 
-    # Compute per-90 columns if requested
-    stat_cols = _compute_per90_columns(df, stats, normalize_per90)
+    # Compute per-36 columns if requested
+    stat_cols = _compute_per36_columns(df, stats, normalize_per36)
 
     # Initialize performance column
     df[perf_col] = 0.0
@@ -244,9 +244,9 @@ def calculate_player_performance(
     # Apply fallback for low-minute players
     _apply_min_minutes_fallback(df, min_minutes, perf_col, fallback)
 
-    # Clean up temporary per-90 columns
-    if normalize_per90:
-        _remove_per90_columns(df, stats)
+    # Clean up temporary per-36 columns
+    if normalize_per36:
+        _remove_per36_columns(df, stats)
 
     return df
 
@@ -299,14 +299,14 @@ def main():
     print(f"  ✓ Position mapping complete")
     print(f"  ✓ Stats required by weights: {', '.join(sorted(stats_needed))}")
     
-    # 4) Calculate performance using position-specific per-90 weights
+    # 4) Calculate performance using position-specific per-36 weights
     print("\n[4/4] Calculating performance metrics...")
     out = calculate_player_performance(
         df,
         weights_path=str(weights_path),
         min_minutes=500,  # Players below 500 minutes get team/position means
         fallback="team_position_mean",
-        normalize_per90=True,
+        normalize_per36=True,
         perf_col="performance"
     )
     
