@@ -25,31 +25,27 @@ notes
 
 import argparse
 from pathlib import Path
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# basic style
-plt.rcParams.update({
-    "figure.dpi": 140,
-    "axes.titlesize": 14,
-    "axes.labelsize": 12,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
-})
+# Add project root to path for imports
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+# Import shared utilities
+from src.utils.plots import ensure_dir, sentence_case, setup_plot_rcparams
+
+# Setup consistent plot style
+setup_plot_rcparams(dpi=140, title_size=14, label_size=12, tick_size=10)
 
 # ---------- helpers ----------
+# (ensure_dir and sentence_case now imported from utils.plots)
 
-def ensure_dir(p: Path) -> Path:
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-def sc(s: str) -> str:
-    """sentence case helper: first char upper, rest lower (for plot texts only)."""
-    if not s:
-        return s
-    s = str(s)
-    return s[0].upper() + s[1:].lower()
+# Alias for backward compatibility in this file
+sc = sentence_case
 
 def pythag_win_pct(points_for_pg, points_against_pg, exponent=13.91):
     """pythagorean expectation using per-game points."""

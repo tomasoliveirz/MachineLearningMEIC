@@ -23,38 +23,29 @@ notes
 
 import argparse
 from pathlib import Path
+import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-plt.rcParams.update({
-    "figure.dpi": 140,
-    "axes.titlesize": 14,
-    "axes.labelsize": 12,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
-})
+# Add project root to path for imports
+ROOT_PROJECT = Path(__file__).resolve().parents[2]
+if str(ROOT_PROJECT) not in sys.path:
+    sys.path.insert(0, str(ROOT_PROJECT))
+
+# Import shared utilities
+from src.utils.plots import ensure_dir, sentence_case, setup_plot_rcparams
+from src.utils.players import infer_rookie_origin
+
+# Setup consistent plot style
+setup_plot_rcparams(dpi=140, title_size=14, label_size=12, tick_size=10)
 
 # ---------- helpers ----------
+# (ensure_dir, sentence_case, and infer_rookie_origin now imported from utils)
 
-def sc(s: str) -> str:
-    """sentence case for plot texts."""
-    if not s:
-        return s
-    s = str(s)
-    return s[0].upper() + s[1:].lower()
-
-def ensure_dir(p: Path) -> Path:
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-def origin_from_college(players: pd.DataFrame) -> pd.Series:
-    """ncaa if college is a non-empty, non-unknown string; else non_ncaa."""
-    if "college" not in players.columns:
-        return pd.Series("non_ncaa", index=players.index, dtype="object")
-    s = players["college"].astype(str).str.strip().str.lower()
-    is_unknown = s.isna() | s.eq("nan") | s.eq("unknown") | s.eq("")
-    return np.where(is_unknown, "non_ncaa", "ncaa")
+# Aliases for backward compatibility in this file
+sc = sentence_case
+origin_from_college = infer_rookie_origin
 
 def load_perf(perf_path: Path) -> pd.DataFrame:
     """load player_performance with a couple of robust fallbacks."""

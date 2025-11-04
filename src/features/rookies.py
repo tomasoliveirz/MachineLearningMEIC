@@ -2,42 +2,39 @@
 # -*- coding: utf-8 -*-
 
 from pathlib import Path
+import sys
 import pandas as pd
 import numpy as np
 
 # setup basic folder structure
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = ROOT / "data" / "raw"
 PROC_DIR = ROOT / "data" / "processed"
 PROC_DIR.mkdir(parents=True, exist_ok=True)
 
-# load players data (prefer the cleaned version if available)
-def _load_players():
-    p_clean = PROC_DIR / "players_cleaned.csv"
-    if p_clean.exists():
-        return pd.read_csv(p_clean)
-    elif p_raw.exists():
-        return pd.read_csv(p_raw)
-    else:
-        raise FileNotFoundError("players.csv not found in data/processed or data/raw")
+# Add project root to path for imports
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-# load teams data (used to attach team names later)
+# Import shared utilities
+from src.utils.players import infer_rookie_origin, aggregate_stints, label_rookies
+from src.utils.io import load_players, load_players_teams, load_teams
+
+# Wrapper functions for backward compatibility (now use utils.io)
+def _load_players():
+    """Load players data (prefer cleaned version)."""
+    return load_players(prefer_cleaned=True, root=ROOT)
+
 def _load_teams():
-    t_clean = PROC_DIR / "teams_cleaned.csv"
-    t_raw = RAW_DIR / "teams.csv"
-    if t_clean.exists():
-        return pd.read_csv(t_clean)
-    elif t_raw.exists():
-        return pd.read_csv(t_raw)
-    else:
+    """Load teams data (prefer cleaned version)."""
+    try:
+        return load_teams(prefer_cleaned=True, root=ROOT)
+    except FileNotFoundError:
         return None
 
-# load player-team-season links
 def _load_players_teams():
-    pt = RAW_DIR / "players_teams.csv"
-    if not pt.exists():
-        raise FileNotFoundError("players_teams.csv not found in data/raw")
-    return pd.read_csv(pt)
+    """Load player-team-season links."""
+    return load_players_teams(root=ROOT)
 
 # load team season metrics (used to add form variables later)
 def _load_team_season():
@@ -46,34 +43,28 @@ def _load_team_season():
 
 # label which rows correspond to rookie seasons
 def _label_rookies(players_teams: pd.DataFrame) -> pd.DataFrame:
-    df = players_teams.copy()
-    df["year"] = pd.to_numeric(df["year"], errors="coerce")
-
-    # find the first season for each player
+    """
+    Label rookie seasons and aggregate stints.
+    
+    Uses utilities from src.utils.players for aggregation and labeling.
+    """
+    # First aggregate stints to player-year-team level
+    df = aggregate_stints(players_teams)
+    
+    # Normalize column names (aggregate_stints uses bioID)
+    if "bioID" in df.columns and "playerID" not in df.columns:
+        df["playerID"] = df["bioID"]
+    
+    # Find first year per player for rookie detection
     rookie_year = df.groupby("playerID", dropna=False)["year"].min().rename("rookie_year")
     df = df.merge(rookie_year, on="playerID", how="left")
     df["is_rookie"] = (df["year"] == df["rookie_year"]).astype(int)
-
-    # merge multiple stints within the same season/team
-    for c in ["minutes", "points"]:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-    agg = (
-        df.groupby(["playerID", "year", "tmID"], dropna=False)[["minutes", "points", "is_rookie"]]
-          .sum(min_count=1)
-          .reset_index()
-    )
-    agg["is_rookie"] = (agg["is_rookie"] > 0).astype(int)
-    return agg, rookie_year.reset_index()
+    
+    return df, rookie_year.reset_index()
 
 # detect player origin (ncaa vs non-ncaa) based on college info
-def _rookie_origin(players: pd.DataFrame) -> pd.Series:
-    col = "college"
-    if col not in players.columns:
-        return pd.Series(index=players.index, dtype="object")
-    s = players[col].astype(str).str.strip().str.lower()
-    is_unknown = s.isna() | s.eq("nan") | s.eq("unknown") | s.eq("")
-    return np.where(is_unknown, "non_ncaa", "ncaa")
+# (Now uses imported function from utils.players)
+_rookie_origin = infer_rookie_origin
 
 # build team-level rookie metrics (minutes, points, shares)
 def _team_rookie_features(pst: pd.DataFrame, players: pd.DataFrame) -> pd.DataFrame:

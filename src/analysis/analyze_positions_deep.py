@@ -95,7 +95,14 @@ ROOT = Path(__file__).resolve().parents[2]  # .../AC
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.utils.players import aggregate_stints, compute_per36  # usa tua métrica
+from src.utils.players import (
+    aggregate_stints, 
+    compute_per36,
+    pos_to_role,
+    compute_boxscore_per36,
+    build_height_buckets,
+)
+from src.utils.plots import ensure_dir
 
 
 # --------------------------------------------------
@@ -119,93 +126,7 @@ N_TOP_POS: int = 12
 # --------------------------------------------------
 # HELPERS
 # --------------------------------------------------
-
-def _ensure_dirs(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
-
-
-def _pos_to_role(pos: pd.Series) -> pd.Series:
-    """
-    Mapear posição textual para roles simplificados:
-      guard, wing, forward, forward_center, center, unknown
-    """
-    p = pos.fillna("unknown").astype(str).str.upper()
-
-    def _map(s: str) -> str:
-        if "G" in s and "C" not in s and "F" not in s:
-            return "guard"
-        if "G" in s and "F" in s:
-            return "wing"
-        if "F" in s and "C" in s:
-            return "forward_center"
-        if "C" in s:
-            return "center"
-        if "F" in s:
-            return "forward"
-        return "unknown"
-
-    return p.map(_map)
-
-
-def _compute_boxscore_per36(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    A partir de player-year-team rows, calcular per-36 PUROS para:
-        pts36, reb36, ast36, stl36, blk36, tov36
-
-    Usa:
-        per36 = stat / max(minutes, MIN_EFFECTIVE_MINUTES) * 36
-    """
-    out = df.copy()
-
-    num_cols = [
-        "minutes",
-        "points",
-        "rebounds",
-        "assists",
-        "steals",
-        "blocks",
-        "turnovers",
-    ]
-    for c in num_cols:
-        if c in out.columns:
-            out[c] = pd.to_numeric(out[c], errors="coerce")
-        else:
-            out[c] = np.nan
-
-    minutes = out["minutes"].replace({0: np.nan})
-    minutes_for_per36 = minutes.copy()
-    small = minutes_for_per36.notna() & (minutes_for_per36 < MIN_EFFECTIVE_MINUTES)
-    minutes_for_per36.loc[small] = MIN_EFFECTIVE_MINUTES
-
-    def per36(col: str) -> pd.Series:
-        return (out[col] / minutes_for_per36) * 36.0
-
-    out["pts36"] = per36("points")
-    out["reb36"] = per36("rebounds")
-    out["ast36"] = per36("assists")
-    out["stl36"] = per36("steals")
-    out["blk36"] = per36("blocks")
-    out["tov36"] = per36("turnovers")
-
-    return out
-
-
-def _build_height_bucket(df: pd.DataFrame) -> pd.Series:
-    """
-    Criar buckets de altura por quantis (4 grupos):
-        Q1_short, Q2, Q3, Q4_tall
-    """
-    h = pd.to_numeric(df["height"], errors="coerce")
-    if h.notna().sum() < 10:
-        return pd.Series(["unknown"] * len(df), index=df.index)
-
-    # 4 quantis com labels legíveis
-    try:
-        buckets = pd.qcut(h, q=4, labels=["Q1_short", "Q2", "Q3", "Q4_tall"])
-    except ValueError:
-        # se muita altura igual / quantis mal formados
-        buckets = pd.cut(h, bins=4, labels=["Q1_short", "Q2", "Q3", "Q4_tall"])
-    return buckets
+# (Most helpers now imported from src.utils)
 
 
 def _run_role_regressions(df: pd.DataFrame,
@@ -302,8 +223,8 @@ def main() -> None:
     reports_dir = ROOT / "reports" / "positions_deep"
     fig_dir = reports_dir / "figures"
     tables_dir = reports_dir / "tables"
-    _ensure_dirs(fig_dir)
-    _ensure_dirs(tables_dir)
+    ensure_dir(fig_dir)
+    ensure_dir(tables_dir)
 
     print("=" * 60)
     print("DEEP POSITION ANALYSIS (stats + roles + pos + height/weight)")
@@ -325,7 +246,7 @@ def main() -> None:
     df_stats["minutes"] = minutes_full  # garantir coluna consistente
 
     # per-36 PUROS de box-score
-    df_stats = _compute_boxscore_per36(df_stats)
+    df_stats = compute_boxscore_per36(df_stats, min_effective_minutes=MIN_EFFECTIVE_MINUTES)
 
     # ordenar para construir minutes_next
     df_stats = df_stats.sort_values(["bioID", "year"]).copy()
@@ -351,7 +272,7 @@ def main() -> None:
     df = df_stats_analysis.merge(df_meta, on="bioID", how="left")
 
     # role simplificado
-    df["role"] = _pos_to_role(df.get("pos", pd.Series(index=df.index)))
+    df["role"] = pos_to_role(df.get("pos", pd.Series(index=df.index)))
 
     # alturas / pesos / career length
     df["height"] = pd.to_numeric(df.get("height"), errors="coerce")
@@ -365,7 +286,7 @@ def main() -> None:
         df["career_length"] = np.nan
 
     # height buckets
-    df["height_bucket"] = _build_height_bucket(df)
+    df["height_bucket"] = build_height_buckets(df, col="height", n_quantiles=4)
 
     # preparar pos_raw e pos_bucketed
     df["pos_raw"] = df.get("pos", pd.Series(index=df.index)).fillna("UNKNOWN").astype(str).str.upper()
@@ -584,10 +505,10 @@ def main() -> None:
 
     # Usar df_stats (não filtrado por MIN_MINUTES_ANALYSIS) para regressões mais robustas
     df_reg = df_stats.merge(df_meta, on="bioID", how="left")
-    df_reg["role"] = _pos_to_role(df_reg.get("pos", pd.Series(index=df_reg.index)))
+    df_reg["role"] = pos_to_role(df_reg.get("pos", pd.Series(index=df_reg.index)))
 
     # per-36 puros no df_reg
-    df_reg = _compute_boxscore_per36(df_reg)
+    df_reg = compute_boxscore_per36(df_reg, min_effective_minutes=MIN_EFFECTIVE_MINUTES)
 
     roles_for_reg = [r for r in ["guard", "wing", "forward", "forward_center", "center"]
                      if r in df_reg["role"].unique()]

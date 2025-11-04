@@ -125,36 +125,74 @@ POSITION_WEIGHTS: Dict[str, Dict[str, float]] = {
 # HELPERS PARA ROLE / POS
 # --------------------------------------------------------------------
 
-def _pos_to_role(pos: pd.Series) -> pd.Series:
+def pos_to_role(pos: pd.Series) -> pd.Series:
     """
-    Mapear coluna 'pos' (raw, tipo 'G', 'F-C', 'G-F', 'C', etc.)
-    para roles simplificados: guard, wing, forward, forward_center, center, unknown.
+    Map position strings to simplified roles.
+    
+    Converts raw position codes (e.g., 'G', 'F-C', 'G-F', 'C', 'PF', 'SG')
+    to standardized role categories:
+      - 'guard': positions with 'G' but no 'F' or 'C'
+      - 'wing': positions with both 'G' and 'F' (e.g., 'G-F', 'SG-SF')
+      - 'forward': positions with 'F' but no 'C' or 'G'
+      - 'forward_center': positions with both 'F' and 'C' (e.g., 'F-C', 'PF-C')
+      - 'center': positions with 'C' but no 'F' or 'G'
+      - 'unknown': anything else or missing values
+    
+    Args:
+        pos: Series with position strings
+        
+    Returns:
+        Series with role categories
+        
+    Example:
+        >>> pos = pd.Series(['G', 'F-C', 'G-F', 'C', None])
+        >>> pos_to_role(pos)
+        0         guard
+        1    forward_center
+        2          wing
+        3        center
+        4       unknown
+        dtype: object
     """
-    if pos is None:
-        return pd.Series(["unknown"] * 0, index=pd.Index([], name="idx"))
+    if pos is None or len(pos) == 0:
+        return pd.Series([], dtype=str)
 
     p = pos.fillna("unknown").astype(str).str.upper()
 
     def _map(s: str) -> str:
         s = s.strip()
-        if not s or s == "UNKNOWN":
+        if not s or s == "UNKNOWN" or s == "NAN":
             return "unknown"
 
-        # combos comuns
+        # Guard: has G but no F or C
         if "G" in s and "F" not in s and "C" not in s:
             return "guard"
+        
+        # Wing: has both G and F (e.g., SG-SF, G-F)
         if "G" in s and "F" in s:
-            # SG/SF, G-F -> wing
             return "wing"
+        
+        # Forward-Center: has both F and C
         if "F" in s and "C" in s:
             return "forward_center"
+        
+        # Center: has C but no F
         if "C" in s:
             return "center"
+        
+        # Forward: has F but no C or G
         if "F" in s:
             return "forward"
+        
         return "unknown"
 
     return p.map(_map)
+
+
+# Keep internal version for backward compatibility
+def _pos_to_role(pos: pd.Series) -> pd.Series:
+    """Internal alias for backward compatibility. Use pos_to_role() instead."""
+    return pos_to_role(pos)
 
 
 def _infer_role(df: pd.DataFrame) -> pd.Series:
@@ -364,6 +402,197 @@ def compute_per36(df: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
 
     # devolve perf_per36 + minutos (0.0 onde não há valor)
     return perf36.astype(float), minutes.fillna(0.0)
+
+
+# --------------------------------------------------------------------
+# PURE PER-36 CALCULATIONS (BOX-SCORE)
+# --------------------------------------------------------------------
+
+def compute_boxscore_per36(df: pd.DataFrame, min_effective_minutes: float = 12.0) -> pd.DataFrame:
+    """
+    Compute pure per-36 box-score statistics without any weighting.
+    
+    Takes raw counting stats (points, rebounds, assists, etc.) and converts
+    them to per-36-minute rates. This is different from compute_per36() which
+    applies position-specific weights to create a composite performance metric.
+    
+    Args:
+        df: DataFrame with columns (if present):
+            - minutes, points, rebounds, assists, steals, blocks, turnovers
+        min_effective_minutes: Minimum minutes floor to avoid extreme per-36 values
+            (default: 12.0)
+            
+    Returns:
+        Copy of df with added columns: pts36, reb36, ast36, stl36, blk36, tov36
+        
+    Example:
+        >>> df = pd.DataFrame({
+        ...     'minutes': [100, 200, 5],
+        ...     'points': [50, 120, 10]
+        ... })
+        >>> result = compute_boxscore_per36(df)
+        >>> result[['minutes', 'points', 'pts36']]
+           minutes  points  pts36
+        0      100      50   18.0
+        1      200     120   21.6
+        2        5      10   30.0  # floored to min_effective_minutes
+    """
+    out = df.copy()
+    
+    # Column mapping: raw stat name -> per-36 column name
+    stat_cols = {
+        "points": "pts36",
+        "rebounds": "reb36",
+        "assists": "ast36",
+        "steals": "stl36",
+        "blocks": "blk36",
+        "turnovers": "tov36",
+    }
+    
+    # Ensure all stat columns exist as numeric
+    for raw_col in stat_cols.keys():
+        if raw_col in out.columns:
+            out[raw_col] = pd.to_numeric(out[raw_col], errors="coerce")
+        else:
+            out[raw_col] = np.nan
+    
+    # Handle minutes with floor
+    if "minutes" in out.columns:
+        out["minutes"] = pd.to_numeric(out["minutes"], errors="coerce")
+    else:
+        out["minutes"] = np.nan
+    
+    minutes = out["minutes"].replace({0: np.nan})
+    minutes_floor = minutes.copy()
+    
+    # Apply floor: any value below min_effective_minutes gets raised to it
+    small_mask = minutes_floor.notna() & (minutes_floor < min_effective_minutes)
+    minutes_floor.loc[small_mask] = min_effective_minutes
+    
+    # Calculate per-36 for each stat
+    for raw_col, per36_col in stat_cols.items():
+        out[per36_col] = (out[raw_col] / minutes_floor) * 36.0
+        # Where minutes are invalid, per36 should be NaN
+        out.loc[minutes_floor.isna(), per36_col] = np.nan
+    
+    return out
+
+
+# --------------------------------------------------------------------
+# HEIGHT BUCKETS
+# --------------------------------------------------------------------
+
+def build_height_buckets(df: pd.DataFrame, col: str = "height", 
+                        n_quantiles: int = 4) -> pd.Series:
+    """
+    Create height buckets based on quantiles.
+    
+    Divides players into height groups (e.g., Q1_short, Q2, Q3, Q4_tall)
+    based on quantile cuts. Useful for position-agnostic height analysis.
+    
+    Args:
+        df: DataFrame containing height column
+        col: Name of height column (default: "height")
+        n_quantiles: Number of quantile groups (default: 4)
+        
+    Returns:
+        Series with bucket labels. If not enough data, returns "unknown" for all.
+        
+    Example:
+        >>> df = pd.DataFrame({'height': [65, 68, 71, 74, 77, 80]})
+        >>> build_height_buckets(df)
+        0    Q1_short
+        1    Q1_short
+        2         Q2
+        3         Q3
+        4         Q3
+        5    Q4_tall
+        dtype: category
+    """
+    if col not in df.columns:
+        return pd.Series(["unknown"] * len(df), index=df.index, dtype=str)
+    
+    h = pd.to_numeric(df[col], errors="coerce")
+    
+    # Need at least some valid values
+    if h.notna().sum() < 10:
+        return pd.Series(["unknown"] * len(df), index=df.index, dtype=str)
+    
+    # Create labels based on n_quantiles
+    if n_quantiles == 4:
+        labels = ["Q1_short", "Q2", "Q3", "Q4_tall"]
+    elif n_quantiles == 3:
+        labels = ["Q1_short", "Q2", "Q3_tall"]
+    elif n_quantiles == 5:
+        labels = ["Q1_short", "Q2", "Q3", "Q4", "Q5_tall"]
+    else:
+        labels = [f"Q{i+1}" for i in range(n_quantiles)]
+    
+    try:
+        buckets = pd.qcut(h, q=n_quantiles, labels=labels, duplicates='drop')
+    except (ValueError, TypeError):
+        # If qcut fails (e.g., too many duplicate values), try pd.cut
+        try:
+            buckets = pd.cut(h, bins=n_quantiles, labels=labels[:n_quantiles])
+        except (ValueError, TypeError):
+            # Last resort: return unknown
+            return pd.Series(["unknown"] * len(df), index=df.index, dtype=str)
+    
+    # Fill NaN values with "unknown"
+    buckets = buckets.astype(str).replace("nan", "unknown")
+    
+    return buckets
+
+
+# --------------------------------------------------------------------
+# ROOKIE ORIGIN DETECTION
+# --------------------------------------------------------------------
+
+def infer_rookie_origin(players: pd.DataFrame) -> pd.Series:
+    """
+    Detect player origin based on college attendance.
+    
+    Classifies players as:
+      - 'ncaa': went to college (college field is non-empty and not unknown)
+      - 'non_ncaa': no college or unknown college (international, high school, etc.)
+    
+    Args:
+        players: DataFrame with a 'college' column
+        
+    Returns:
+        Series with 'ncaa' or 'non_ncaa' labels
+        
+    Example:
+        >>> df = pd.DataFrame({
+        ...     'playerID': ['p1', 'p2', 'p3'],
+        ...     'college': ['Stanford', None, 'Unknown']
+        ... })
+        >>> infer_rookie_origin(df)
+        0        ncaa
+        1    non_ncaa
+        2    non_ncaa
+        dtype: object
+    """
+    if "college" not in players.columns:
+        # No college column: assume all are non-NCAA
+        return pd.Series("non_ncaa", index=players.index, dtype=str)
+    
+    college = players["college"].astype(str).str.strip().str.lower()
+    
+    # Consider empty, "nan", "none", "unknown" as non-NCAA
+    is_unknown = (
+        college.isna() 
+        | college.eq("nan") 
+        | college.eq("none")
+        | college.eq("unknown") 
+        | college.eq("")
+    )
+    
+    return pd.Series(
+        np.where(is_unknown, "non_ncaa", "ncaa"),
+        index=players.index,
+        dtype=str
+    )
 
 
 # --------------------------------------------------------------------
