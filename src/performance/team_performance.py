@@ -1,336 +1,300 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
-Calculate team/coach-like performance metrics.
+Team Performance Analysis (Season-level)
+=========================================
+Produces: data/processed/team_performance.csv
 
-This module computes team strength from player performance and compares it
-to actual team results to identify coaching impact (overperformance).
-
-Key metrics:
-  - team_strength: Minutes-weighted average of player performance
-  - rs_win_pct_expected: Expected win% based on team_strength (OLS regression)
-  - coach_like_overperf: Actual win% - Expected win% (coaching effect)
-  - win_pct_change: Year-over-year change in win%
+Columns:
+- team_id, year, GP, won, lost, rs_win_pct
+- pythag_win_pct (with fitted exponent)
+- team_strength (roster-based, from player_performance)
+- rs_win_pct_expected_roster (from linear regression)
+- overach_pythag = rs_win_pct - pythag_win_pct
+- overach_roster = rs_win_pct - rs_win_pct_expected_roster
+- po_W, po_L, po_win_pct (playoffs)
+- rs_win_pct_prev, win_pct_change
 """
 
 from pathlib import Path
-import sys
 import pandas as pd
 import numpy as np
 
-# Setup project root
+# Paths
 ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+RAW_DIR = ROOT / "data" / "raw"
+PROC_DIR = ROOT / "data" / "processed"
+PROC_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _ensure_team_id(df: pd.DataFrame) -> pd.DataFrame:
+def fit_pythag_exponent(df_stats: pd.DataFrame) -> float:
     """
-    Normalize team ID column names.
+    Fit optimal Pythagorean exponent by minimizing SSE between
+    actual win% and pythag win%.
     
-    Accepts any of: team_id, tmID, teamID
-    Creates/ensures a 'team_id' column as string type.
-    
-    Args:
-        df: DataFrame with a team identifier column
-        
-    Returns:
-        DataFrame with 'team_id' column
+    Uses per-game stats: PF = o_pts/GP, PA = d_pts/GP
     """
-    df = df.copy()
+    df = df_stats.copy()
+    df = df[df['GP'] > 0].copy()
+    df['actual_win_pct'] = df['won'] / df['GP']
+    df['PF'] = df['o_pts'] / df['GP']
+    df['PA'] = df['d_pts'] / df['GP']
     
-    if "team_id" in df.columns:
-        df["team_id"] = df["team_id"].astype(str)
-    elif "tmID" in df.columns:
-        df["team_id"] = df["tmID"].astype(str)
-    elif "teamID" in df.columns:
-        df["team_id"] = df["teamID"].astype(str)
-    else:
-        raise KeyError("No team identifier column found (expected: team_id, tmID, or teamID)")
+    # Remove invalid rows
+    df = df[(df['PF'] > 0) & (df['PA'] > 0)].copy()
     
-    return df
+    best_exp = 14.0  # Default for basketball
+    best_sse = float('inf')
+    
+    # Grid search from 5 to 20, step 0.1
+    for exp in np.arange(5.0, 20.1, 0.1):
+        pythag = (df['PF'] ** exp) / ((df['PF'] ** exp) + (df['PA'] ** exp))
+        sse = ((df['actual_win_pct'] - pythag) ** 2).sum()
+        if sse < best_sse:
+            best_sse = sse
+            best_exp = exp
+    
+    return best_exp
 
 
 def compute_team_strength(df_players: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate team strength as minutes-weighted average of player performance.
+    Compute roster strength per team-season from player_performance.csv
     
-    Team strength represents the quality of the roster based on individual
-    player performance, weighted by playing time.
-    
-    Args:
-        df_players: DataFrame from player_performance.csv with columns:
-            - bioID (or playerID): player identifier
-            - tmID (or team_id): team identifier  
-            - year: season year
-            - minutes: minutes played
-            - performance: player performance metric
-    
-    Returns:
-        DataFrame with columns:
-            - team_id: team identifier (string)
-            - year: season year
-            - team_strength: weighted average performance
-            - total_minutes: sum of player minutes
-            - n_players: number of players on team
-    
-    Example:
-        >>> df_players = pd.DataFrame({
-        ...     'bioID': ['p1', 'p2', 'p1', 'p2'],
-        ...     'tmID': ['TEA', 'TEA', 'TEA', 'TEA'],
-        ...     'year': [2020, 2020, 2021, 2021],
-        ...     'minutes': [1000, 800, 1100, 750],
-        ...     'performance': [50, 45, 52, 48]
-        ... })
-        >>> compute_team_strength(df_players)
-          team_id  year  team_strength  total_minutes  n_players
-        0     TEA  2020      47.777778           1800          2
-        1     TEA  2021      50.378378           1850          2
+    Expected columns: tmID, year, minutes, performance
+    Returns DataFrame with: team_id, year, team_strength
+    (team_strength = weighted avg of player performance by minutes)
     """
+    # Validate schema
+    required = {'tmID', 'year', 'minutes', 'performance'}
+    missing = required - set(df_players.columns)
+    if missing:
+        raise KeyError(f"Missing columns in player_performance.csv: {missing}")
+    
     df = df_players.copy()
+    df['team_id'] = df['tmID']  # Convert to canonical name
     
-    # Ensure team_id column
-    df = _ensure_team_id(df)
+    # Ensure numeric
+    df['year'] = pd.to_numeric(df['year'], errors='coerce')
+    df['minutes'] = pd.to_numeric(df['minutes'], errors='coerce')
+    df['performance'] = pd.to_numeric(df['performance'], errors='coerce')
     
-    # Convert to numeric
-    df["year"] = pd.to_numeric(df["year"], errors="coerce")
-    df["minutes"] = pd.to_numeric(df["minutes"], errors="coerce")
-    df["performance"] = pd.to_numeric(df["performance"], errors="coerce")
+    # Filter valid rows
+    df = df[(df['performance'].notna()) & (df['minutes'] > 0)].copy()
     
-    # Filter out invalid rows (minutes <= 0 or missing performance)
-    df = df[(df["minutes"] > 0) & (df["performance"].notna())].copy()
+    # Compute weighted average performance per team-season
+    df['weighted_perf'] = df['performance'] * df['minutes']
     
-    # Calculate weighted performance contribution
-    df["perf_x_min"] = df["performance"] * df["minutes"]
+    grouped = df.groupby(['team_id', 'year'], dropna=False).agg({
+        'weighted_perf': 'sum',
+        'minutes': 'sum'
+    }).reset_index()
     
-    # Get player ID column (bioID or playerID)
-    if "bioID" in df.columns:
-        player_col = "bioID"
-    elif "playerID" in df.columns:
-        player_col = "playerID"
-    else:
-        raise KeyError("Expected either 'bioID' or 'playerID' in player_performance.csv")
+    grouped['team_strength'] = grouped['weighted_perf'] / grouped['minutes']
     
-    # Aggregate by team-year
-    team_agg = df.groupby(["team_id", "year"], as_index=False).agg({
-        "perf_x_min": "sum",
-        "minutes": "sum",
-        player_col: "nunique"
-    })
-    
-    # Rename columns for clarity
-    team_agg = team_agg.rename(columns={
-        "minutes": "total_minutes",
-        player_col: "n_players"
-    })
-    
-    # Calculate team strength (minutes-weighted average performance)
-    team_agg["team_strength"] = team_agg["perf_x_min"] / team_agg["total_minutes"]
-    team_agg["team_strength"] = team_agg["team_strength"].fillna(0.0)
-    
-    # Drop intermediate column
-    team_agg = team_agg.drop(columns=["perf_x_min"])
-    
-    return team_agg[["team_id", "year", "team_strength", "total_minutes", "n_players"]]
+    return grouped[['team_id', 'year', 'team_strength']]
 
 
-def attach_team_results(team_strength_df: pd.DataFrame) -> pd.DataFrame:
+def attach_team_results(df_strength: pd.DataFrame, df_stats: pd.DataFrame) -> pd.DataFrame:
     """
-    Attach actual team results from team_season_statistics.csv.
+    Merge team strength with team season stats.
+    Compute pythag_win_pct and rs_win_pct.
     
-    Merges team strength data with win percentage and other team statistics.
-    
-    Args:
-        team_strength_df: DataFrame with team_id, year, team_strength columns
-        
-    Returns:
-        DataFrame with added columns:
-            - season_win_pct (or rs_win_pct): actual regular season win percentage
-            - Additional team stats from team_season_statistics.csv
+    Expected columns in df_stats: tmID, year, won, lost, o_pts, d_pts, GP
     """
-    # Load team season statistics
-    team_stats_path = ROOT / "data" / "processed" / "team_season_statistics.csv"
+    # Validate schema
+    required = {'tmID', 'year', 'won', 'lost', 'o_pts', 'd_pts'}
+    missing = required - set(df_stats.columns)
+    if missing:
+        raise KeyError(f"Missing columns in team_season_statistics.csv: {missing}")
     
-    if not team_stats_path.exists():
-        raise FileNotFoundError(f"Cannot find {team_stats_path}")
+    df = df_stats.copy()
+    df['team_id'] = df['tmID']  # Convert to canonical name
     
-    df_stats = pd.read_csv(team_stats_path)
+    # Ensure numeric
+    for col in ['year', 'won', 'lost', 'GP', 'o_pts', 'd_pts']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    # Ensure team_id column
-    df_stats = _ensure_team_id(df_stats)
+    # Compute GP if missing
+    if 'GP' not in df.columns or df['GP'].isna().all():
+        df['GP'] = df['won'] + df['lost']
     
-    # Ensure year is numeric
-    if "year" in df_stats.columns:
-        df_stats["year"] = pd.to_numeric(df_stats["year"], errors="coerce")
-    elif "season" in df_stats.columns:
-        df_stats["year"] = pd.to_numeric(df_stats["season"], errors="coerce")
-    else:
-        raise KeyError("Expected 'year' or 'season' column in team_season_statistics.csv")
+    # rs_win_pct
+    df['rs_win_pct'] = df['won'] / df['GP'].replace(0, np.nan)
     
-    # Ensure rs_win_pct column exists
-    if "season_win_pct" in df_stats.columns:
-        df_stats["rs_win_pct"] = pd.to_numeric(df_stats["season_win_pct"], errors="coerce")
-    elif "rs_win_pct" in df_stats.columns:
-        df_stats["rs_win_pct"] = pd.to_numeric(df_stats["rs_win_pct"], errors="coerce")
-    elif "won" in df_stats.columns and "lost" in df_stats.columns:
-        won = pd.to_numeric(df_stats["won"], errors="coerce")
-        lost = pd.to_numeric(df_stats["lost"], errors="coerce")
-        total_games = won + lost
-        df_stats["rs_win_pct"] = np.where(total_games > 0, won / total_games, np.nan)
-    else:
-        raise KeyError("Cannot find win percentage data (need season_win_pct, rs_win_pct, or won/lost)")
+    # Fit Pythag exponent
+    pythag_x = fit_pythag_exponent(df)
+    print(f"\n[Team Performance] Fitted Pythagorean exponent: {pythag_x:.2f}")
     
-    # Select relevant columns for merge
-    merge_cols = ["team_id", "year", "rs_win_pct"]
-    
-    # Add other useful columns if they exist
-    optional_cols = ["won", "lost", "GP", "name", "playoff"]
-    for col in optional_cols:
-        if col in df_stats.columns:
-            merge_cols.append(col)
-    
-    df_stats_subset = df_stats[merge_cols].copy()
+    # Compute Pythag win%
+    df['PF'] = df['o_pts'] / df['GP'].replace(0, np.nan)
+    df['PA'] = df['d_pts'] / df['GP'].replace(0, np.nan)
+    df['pythag_win_pct'] = (df['PF'] ** pythag_x) / (
+        (df['PF'] ** pythag_x) + (df['PA'] ** pythag_x)
+    )
+    df['pythag_win_pct'] = df['pythag_win_pct'].clip(0, 1)
     
     # Merge with team strength
-    result = team_strength_df.merge(
-        df_stats_subset,
-        on=["team_id", "year"],
-        how="left"
-    )
+    df = df.merge(df_strength, on=['team_id', 'year'], how='left')
     
-    return result
-
-
-def compute_team_overperformance(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Compute team overperformance using OLS regression.
-    
-    Fits: rs_win_pct ~ team_strength
-    Then calculates:
-      - rs_win_pct_expected: predicted win% based on team strength
-      - coach_like_overperf: actual - expected (coaching effect)
-      - win_pct_change: year-over-year change in actual win%
-    
-    Args:
-        df: DataFrame with team_id, year, team_strength, rs_win_pct
-        
-    Returns:
-        DataFrame with added columns:
-            - rs_win_pct_expected: predicted win% from regression
-            - coach_like_overperf: actual - expected win%
-            - rs_win_pct_prev: previous year's win%
-            - win_pct_change: change from previous year
-    """
-    df = df.copy()
-    
-    # Ensure numeric types
-    df["team_strength"] = pd.to_numeric(df["team_strength"], errors="coerce")
-    df["rs_win_pct"] = pd.to_numeric(df["rs_win_pct"], errors="coerce")
-    
-    # Filter to rows with valid data for regression
-    reg_data = df[["team_strength", "rs_win_pct"]].dropna()
-    
-    if len(reg_data) < 10:
-        print(f"Warning: Only {len(reg_data)} valid observations for regression. Results may be unreliable.")
-    
-    # Fit OLS regression: rs_win_pct ~ team_strength
-    X = reg_data["team_strength"].values
-    y = reg_data["rs_win_pct"].values
-    
-    # Add intercept to X
-    X_design = np.column_stack([np.ones(len(X)), X])
-    
-    # Solve OLS using least squares
-    coeffs, residuals, rank, s = np.linalg.lstsq(X_design, y, rcond=None)
-    intercept, slope = coeffs
-    
-    print(f"\nRegression: rs_win_pct ~ team_strength")
-    print(f"  Intercept: {intercept:.4f}")
-    print(f"  Slope:     {slope:.4f}")
-    print(f"  N obs:     {len(reg_data)}")
-    
-    # Calculate expected win% for all rows
-    df["rs_win_pct_expected"] = intercept + slope * df["team_strength"]
-    
-    # Clip expected values to valid range [0, 1]
-    df["rs_win_pct_expected"] = df["rs_win_pct_expected"].clip(0.0, 1.0)
-    
-    # Calculate overperformance (coaching effect)
-    df["coach_like_overperf"] = df["rs_win_pct"] - df["rs_win_pct_expected"]
-    
-    # Sort by team and year for year-over-year calculations
-    df = df.sort_values(["team_id", "year"]).reset_index(drop=True)
-    
-    # Calculate previous year's win% and change
-    df["rs_win_pct_prev"] = df.groupby("team_id")["rs_win_pct"].shift(1)
-    df["win_pct_change"] = df["rs_win_pct"] - df["rs_win_pct_prev"]
+    # Drop temporary columns
+    df = df.drop(columns=['PF', 'PA'], errors='ignore')
     
     return df
 
 
-def calculate_coach_like_performance():
+def attach_playoffs(df: pd.DataFrame, teams_post: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate team/coach-like performance metrics.
+    Attach playoff results from teams_post.csv
     
-    Pipeline:
-      1. Load player performance data
-      2. Compute team strength (minutes-weighted player performance)
-      3. Attach actual team results (win%)
-      4. Run regression to get expected win% and compute overperformance
-      5. Save to team_performance.csv
+    Expected columns: tmID, year, W, L
     """
-    print("=" * 60)
-    print("TEAM/COACH-LIKE PERFORMANCE CALCULATION")
-    print("=" * 60)
+    # Validate schema
+    required = {'tmID', 'year', 'W', 'L'}
+    missing = required - set(teams_post.columns)
+    if missing:
+        raise KeyError(f"Missing columns in teams_post.csv: {missing}")
     
-    # 1) Load player performance
-    print("\n[1/4] Loading player performance...")
-    player_path = ROOT / "data" / "processed" / "player_performance.csv"
-    df_players = pd.read_csv(player_path)
-    print(f"  ✓ Loaded {len(df_players):,} player-season records")
+    po = teams_post.copy()
+    po['team_id'] = po['tmID']  # Convert to canonical name
     
-    # 2) Compute team strength
-    print("\n[2/4] Computing team strength (minutes-weighted performance)...")
-    df_team_strength = compute_team_strength(df_players)
-    print(f"  ✓ Computed team strength for {len(df_team_strength)} team-seasons")
-    print(f"  Team strength range: [{df_team_strength['team_strength'].min():.2f}, {df_team_strength['team_strength'].max():.2f}]")
+    # Ensure numeric
+    po['year'] = pd.to_numeric(po['year'], errors='coerce')
+    po['W'] = pd.to_numeric(po['W'], errors='coerce')
+    po['L'] = pd.to_numeric(po['L'], errors='coerce')
     
-    # 3) Attach team results
-    print("\n[3/4] Attaching team results (win%)...")
-    df_with_results = attach_team_results(df_team_strength)
-    print(f"  ✓ Merged with team statistics")
-    print(f"  Teams with win% data: {df_with_results['rs_win_pct'].notna().sum()}")
+    # Aggregate by team-year (in case of duplicates)
+    po_agg = po.groupby(['team_id', 'year'], dropna=False).agg({
+        'W': 'sum',
+        'L': 'sum'
+    }).reset_index()
     
-    # 4) Compute overperformance
-    print("\n[4/4] Computing overperformance (coaching effect)...")
-    df_final = compute_team_overperformance(df_with_results)
+    po_agg = po_agg.rename(columns={'W': 'po_W', 'L': 'po_L'})
+    po_agg['po_win_pct'] = po_agg['po_W'] / (po_agg['po_W'] + po_agg['po_L'])
+    po_agg['po_win_pct'] = po_agg['po_win_pct'].clip(0, 1)
     
-    # Save results
-    out_path = ROOT / "data" / "processed" / "team_performance.csv"
-    df_final.to_csv(out_path, index=False)
+    # Merge
+    df = df.merge(po_agg, on=['team_id', 'year'], how='left')
     
-    print(f"\n✓ Saved team performance to: {out_path}")
-    print(f"  Rows: {len(df_final):,}")
+    # Fill NaN with 0 for teams that didn't make playoffs
+    for col in ['po_W', 'po_L']:
+        if col in df.columns:
+            df[col] = df[col].fillna(0)
     
-    # Show summary
-    print("\nTeam strength summary:")
-    print(df_final["team_strength"].describe().round(2))
+    return df
+
+
+def compute_overachieves(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute overachievement metrics and roster-based expectations.
+    """
+    # Fit linear regression: rs_win_pct ~ team_strength
+    valid = df[df['team_strength'].notna() & df['rs_win_pct'].notna()].copy()
     
-    print("\nCoach-like overperformance summary:")
-    print(df_final["coach_like_overperf"].describe().round(3))
+    if len(valid) > 1:
+        from sklearn.linear_model import LinearRegression
+        X = valid[['team_strength']].values
+        y = valid['rs_win_pct'].values
+        
+        model = LinearRegression()
+        model.fit(X, y)
+        
+        # Predict for all rows with team_strength
+        df['rs_win_pct_expected_roster'] = np.nan
+        mask = df['team_strength'].notna()
+        df.loc[mask, 'rs_win_pct_expected_roster'] = model.predict(
+            df.loc[mask, ['team_strength']].values
+        )
+        df['rs_win_pct_expected_roster'] = df['rs_win_pct_expected_roster'].clip(0, 1)
+        
+        r2 = model.score(X, y)
+        print(f"[Team Performance] Roster strength R² = {r2:.3f}")
+    else:
+        df['rs_win_pct_expected_roster'] = np.nan
+        print("[Team Performance] Not enough data for roster regression")
     
-    print("\nSample of results:")
-    display_cols = [
-        "team_id", "year", "team_strength", "rs_win_pct", 
-        "rs_win_pct_expected", "coach_like_overperf", "win_pct_change"
+    # Compute overachieves
+    df['overach_pythag'] = df['rs_win_pct'] - df['pythag_win_pct']
+    df['overach_roster'] = df['rs_win_pct'] - df['rs_win_pct_expected_roster']
+    
+    # Previous year win%
+    df = df.sort_values(['team_id', 'year'])
+    df['rs_win_pct_prev'] = df.groupby('team_id')['rs_win_pct'].shift(1)
+    df['win_pct_change'] = df['rs_win_pct'] - df['rs_win_pct_prev']
+    
+    return df
+
+
+def main():
+    """Main pipeline"""
+    print("\n" + "="*60)
+    print("TEAM PERFORMANCE PIPELINE")
+    print("="*60)
+    
+    # 1. Load team season statistics
+    stats_path = PROC_DIR / "team_season_statistics.csv"
+    if not stats_path.exists():
+        stats_path = RAW_DIR / "teams.csv"
+    
+    print(f"\n[1/5] Loading team stats from {stats_path.name}...")
+    df_stats = pd.read_csv(stats_path)
+    print(f"      Loaded {len(df_stats)} team-seasons")
+    
+    # 2. Load player performance for roster strength
+    print("\n[2/5] Computing team roster strength...")
+    player_perf_path = PROC_DIR / "player_performance.csv"
+    if player_perf_path.exists():
+        df_players = pd.read_csv(player_perf_path)
+        df_strength = compute_team_strength(df_players)
+        print(f"      Computed strength for {len(df_strength)} team-seasons")
+    else:
+        print("      player_performance.csv not found, skipping roster strength")
+        df_strength = pd.DataFrame(columns=['team_id', 'year', 'team_strength'])
+    
+    # 3. Attach team results and compute Pythag
+    print("\n[3/5] Computing Pythagorean expectation...")
+    df = attach_team_results(df_strength, df_stats)
+    
+    # 4. Attach playoffs
+    print("\n[4/5] Attaching playoff results...")
+    po_path = RAW_DIR / "teams_post.csv"
+    if po_path.exists():
+        df_po = pd.read_csv(po_path)
+        df = attach_playoffs(df, df_po)
+        print(f"      Added playoff data for {df['po_W'].notna().sum()} team-seasons")
+    else:
+        print("      teams_post.csv not found, skipping playoffs")
+    
+    # 5. Compute overachieves
+    print("\n[5/5] Computing overachievement metrics...")
+    df = compute_overachieves(df)
+    
+    # Select canonical columns
+    canonical_cols = [
+        'team_id', 'year', 'GP', 'won', 'lost', 'rs_win_pct',
+        'pythag_win_pct', 'team_strength', 'rs_win_pct_expected_roster',
+        'overach_pythag', 'overach_roster',
+        'po_W', 'po_L', 'po_win_pct',
+        'rs_win_pct_prev', 'win_pct_change'
     ]
-    print(df_final[display_cols].head(15).to_string(index=False))
     
-    print("\n" + "=" * 60)
+    # Keep only columns that exist
+    cols_to_keep = [c for c in canonical_cols if c in df.columns]
+    df_out = df[cols_to_keep].copy()
     
-    return df_final
+    # Sort
+    df_out = df_out.sort_values(['team_id', 'year']).reset_index(drop=True)
+    
+    # Save
+    out_path = PROC_DIR / "team_performance.csv"
+    df_out.to_csv(out_path, index=False)
+    
+    print(f"\n✓ Saved {len(df_out)} rows to {out_path}")
+    print("\n" + "-"*60)
+    print("Sample (first 5 rows):")
+    print(df_out.head().to_string())
+    print("="*60 + "\n")
 
 
 if __name__ == "__main__":
-    calculate_coach_like_performance()
+    main()
