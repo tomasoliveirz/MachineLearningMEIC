@@ -34,7 +34,7 @@ warnings.filterwarnings('ignore')
 # Paths
 ROOT = Path(__file__).resolve().parents[3]
 PROC_DIR = ROOT / "data" / "processed"
-REPORTS_DIR = ROOT / "reports" / "models"
+REPORTS_DIR = ROOT / "src" / "model" / "ranking_model"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Random state for reproducibility
