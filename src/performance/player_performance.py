@@ -163,6 +163,14 @@ def calculate_player_performance(
       3. Applying weights to stats: performance = Σ(weight_i × stat_i)
       4. For low-minute players (< min_minutes), replacing with team/position means
     
+    TODO (Future work): Recalibrate position weights with temporal validation
+    Current weights_positions.json may have been fit on all data. For better 
+    generalization, consider:
+      - Split by odd/even seasons
+      - Fit weights on even seasons, validate on odd seasons
+      - Prune stats with |weight| < 0.05 or unstable across positions
+    See FUTURE_IMPROVEMENTS.md section 2.1 for details.
+    
     Args:
         df: DataFrame with required columns:
             - tmID: team identifier

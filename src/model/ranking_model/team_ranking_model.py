@@ -34,7 +34,7 @@ warnings.filterwarnings('ignore')
 # Paths
 ROOT = Path(__file__).resolve().parents[3]
 PROC_DIR = ROOT / "data" / "processed"
-REPORTS_DIR = ROOT / "src" / "model" / "ranking_model"
+REPORTS_DIR = ROOT / "reports" / "models"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Random state for reproducibility
@@ -138,10 +138,20 @@ def build_feature_matrix(
     """
     Extract features (X), target (y), and metadata from DataFrame.
     
-    Features: Union of best features from both old scripts, NO LEAKAGE.
+    Features: Union of best features from both old scripts, NO DIRECT LEAKAGE.
     
-    EXCLUDED (leakage): rank, won, lost, GP, season_win_pct, playoff flags,
-                        po_W, po_L, homeW, homeL, awayW, awayL, confW, confL
+    EXCLUDED (direct leakage): 
+        - rank (target variable)
+        - won, lost, GP, season_win_pct (directly determine rank)
+        - playoff, firstRound, semis, finals (post-season outcomes)
+        - po_W, po_L, po_win_pct (playoff statistics)
+        - homeW, homeL, awayW, awayL, confW, confL (win/loss splits)
+    
+    INCLUDED (near-leakage, but allowed):
+        - overach_pythag, overach_roster: derived from rs_win_pct but not direct
+          These are "storytelling" features (how much team exceeded expectations)
+          Future work: test model variant WITHOUT these features for cleaner baseline
+          (see FUTURE_IMPROVEMENTS.md)
     
     Args:
         df: Input DataFrame
@@ -152,8 +162,9 @@ def build_feature_matrix(
         meta_df: Metadata (year, confID, tmID, name, rank)
     """
     # Feature candidates (explicit list, no wildcards)
+    # Organized by source and type for clarity
     feature_cols_numeric = [
-        # From team_season_statistics.csv
+        # Team statistics (boxscore-derived)
         'point_diff', 'off_eff', 'def_eff',
         'fg_pct', 'three_pct', 'ft_pct', 'opp_fg_pct',
         'prop_3pt_shots',
@@ -161,14 +172,20 @@ def build_feature_matrix(
         'reb_diff', 'stl_diff', 'blk_diff', 'to_diff',
         'attend_pg',
         'franchise_changed',
+        # Historical features (from previous seasons)
         'prev_win_pct_1', 'prev_win_pct_3', 'prev_win_pct_5',
         'prev_point_diff_3', 'prev_point_diff_5',
         'win_pct_change',
+        # Normalized stats (league-relative)
         'off_eff_norm', 'def_eff_norm', 'fg_pct_norm', 'three_pct_norm',
         'ft_pct_norm', 'opp_fg_pct_norm', 'point_diff_norm',
-        # From team_performance.csv
-        'pythag_win_pct', 'team_strength', 'rs_win_pct_expected_roster',
-        'overach_pythag', 'overach_roster'
+        # Advanced metrics from team_performance.csv
+        'pythag_win_pct',              # Bill James Pythagorean expectation
+        'team_strength',               # Roster quality (weighted player perf)
+        'rs_win_pct_expected_roster',  # Expected win% from roster
+        # Over/underachievement (near-leakage features - see docstring)
+        'overach_pythag',   # rs_win_pct - pythag_win_pct
+        'overach_roster'    # rs_win_pct - rs_win_pct_expected_roster
     ]
     
     df_work = df.copy()

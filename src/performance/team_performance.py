@@ -187,12 +187,20 @@ def attach_playoffs(df: pd.DataFrame, teams_post: pd.DataFrame) -> pd.DataFrame:
 def compute_overachieves(df: pd.DataFrame) -> pd.DataFrame:
     """
     Compute overachievement metrics and roster-based expectations.
+    
+    TODO (Future work): Consider using Ridge(alpha=1.0) instead of LinearRegression
+    to stabilize coefficients with small sample sizes (~142 team-seasons).
+    This would make rs_win_pct_expected_roster more robust and reduce variance
+    in overach_roster metric. See FUTURE_IMPROVEMENTS.md for details.
     """
     # Fit linear regression: rs_win_pct ~ team_strength
     valid = df[df['team_strength'].notna() & df['rs_win_pct'].notna()].copy()
     
     if len(valid) > 1:
         from sklearn.linear_model import LinearRegression
+        # TODO: Replace with Ridge for better stability:
+        # from sklearn.linear_model import Ridge
+        # model = Ridge(alpha=1.0)
         X = valid[['team_strength']].values
         y = valid['rs_win_pct'].values
         
