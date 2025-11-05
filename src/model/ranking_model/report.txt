@@ -1,0 +1,35 @@
+Team Ranking Prediction Report
+==================================================
+
+Model: Gradient Boosting Regressor (XGBoost)
+Training seasons: 1–8 | Testing seasons: 9–10
+
+Mean Absolute Error (MAE): 0.0191
+R² Score: 0.9599
+Mean Spearman Correlation (Ranking Accuracy): 0.9751
+
+Per-Year Spearman correlations:
+  Year 9: 0.9835
+  Year 10: 0.9667
+
+Feature Importance:
+  pythag_win_pct: 0.4378
+
+  overach_roster: 0.3465
+
+  team_strength: 0.0784
+
+  rs_win_pct_expected_roster: 0.0585
+
+  rs_win_pct_prev: 0.0285
+
+  overach_pythag: 0.0277
+
+  win_pct_change: 0.0227
+
+Explanation:
+- The model predicts each team's expected win percentage for a season.
+- Rankings are derived by sorting teams by predicted win percentage.
+- Spearman correlation measures how well predicted rankings match actual ones.
+- The model currently uses team-based features only (no coach/player inputs).
+- It is ready for future expansion to include coach performance or player stats.
