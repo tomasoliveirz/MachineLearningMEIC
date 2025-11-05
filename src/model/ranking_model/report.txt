@@ -1,35 +1,138 @@
-Team Ranking Prediction Report
-==================================================
+================================================================================
+TEAM RANKING PREDICTION MODEL - COMPREHENSIVE REPORT
+================================================================================
 
-Model: Gradient Boosting Regressor (XGBoost)
-Training seasons: 1–8 | Testing seasons: 9–10
+MODEL DESCRIPTION
+--------------------------------------------------------------------------------
+Algorithm: Gradient Boosting
+Training Data: Seasons 1-8
+Testing Data: Seasons 9-10
+Target Variable: Conference Rank (position)
+Number of Features: 37
 
-Mean Absolute Error (MAE): 0.0191
-R² Score: 0.9599
-Mean Spearman Correlation (Ranking Accuracy): 0.9751
+DATA PREPROCESSING
+--------------------------------------------------------------------------------
+1. Merged team_performance.csv and teams_cleaned.csv
+2. Removed data leakage variables: rank, won, lost, playoff, etc.
+3. Handled missing values using median imputation
+4. Standardized features using StandardScaler
 
-Per-Year Spearman correlations:
-  Year 9: 0.9835
-  Year 10: 0.9667
+PERFORMANCE METRICS
+--------------------------------------------------------------------------------
+Mean Absolute Error (MAE):     0.7693 positions
+Root Mean Squared Error (RMSE): 0.9858 positions
+RÂ² Score:                       0.7444
+Mean Spearman Correlation:      0.9181
 
-Feature Importance:
-  pythag_win_pct: 0.4378
+INTERPRETATION
+--------------------------------------------------------------------------------
+On average, the model's predictions are off by 0.77 positions.
+The RÂ² of 0.7444 indicates strong predictive power.
+The Spearman correlation of 0.9181 shows how well the model
+preserves the relative ordering of teams.
 
-  overach_roster: 0.3465
+PER-YEAR SPEARMAN CORRELATION
+--------------------------------------------------------------------------------
+  Season  9:  0.9303
+  Season 10:  0.9058
 
-  team_strength: 0.0784
+TOP 15 MOST IMPORTANT FEATURES
+--------------------------------------------------------------------------------
+ 1. pythag_win_pct                           0.535271
+ 2. overach_roster                           0.224432
+ 3. overach_pythag                           0.038710
+ 4. o_asts                                   0.019111
+ 5. d_pf                                     0.014277
+ 6. o_ftm                                    0.011787
+ 7. rs_win_pct_expected_roster               0.010939
+ 8. o_pf                                     0.010778
+ 9. o_dreb                                   0.008649
+10. d_fga                                    0.008428
+11. o_oreb                                   0.008069
+12. o_fgm                                    0.007534
+13. o_stl                                    0.006695
+14. o_3pa                                    0.006675
+15. team_strength                            0.006152
 
-  rs_win_pct_expected_roster: 0.0585
+RANKING COMPARISON (ACTUAL vs PREDICTED)
+================================================================================
 
-  rs_win_pct_prev: 0.0285
+SEASON 9
+--------------------------------------------------------------------------------
+Team     Conf   Actual Rank  Predicted Rank  Difference
+--------------------------------------------------------------------------------
+DET      EA     1            2               +1
+SAS      WE     1            1               +0
+CON      EA     2            2               +0
+SEA      WE     2            2               +0
+LAS      WE     3            3               +0
+NYL      EA     3            2               -1
+IND      EA     4            4               +0
+SAC      WE     4            4               +0
+CHI      EA     5            5               +0
+HOU      WE     5            4               -1
+PHO      WE     6            5               -1
+WAS      EA     6            6               +0
+ATL      EA     7            6               -1
+MIN      WE     7            4               -3
 
-  overach_pythag: 0.0277
+SEASON 10
+--------------------------------------------------------------------------------
+Team     Conf   Actual Rank  Predicted Rank  Difference
+--------------------------------------------------------------------------------
+IND      EA     1            2               +1
+PHO      WE     1            2               +1
+ATL      EA     2            4               +2
+SEA      WE     2            2               +0
+DET      EA     3            4               +1
+LAS      WE     3            3               +0
+SAS      WE     4            5               +1
+WAS      EA     4            5               +1
+CHI      EA     5            5               +0
+MIN      WE     5            5               +0
+CON      EA     6            5               -1
+SAC      WE     6            6               +0
+NYL      EA     7            5               -2
 
-  win_pct_change: 0.0227
 
-Explanation:
-- The model predicts each team's expected win percentage for a season.
-- Rankings are derived by sorting teams by predicted win percentage.
-- Spearman correlation measures how well predicted rankings match actual ones.
-- The model currently uses team-based features only (no coach/player inputs).
-- It is ready for future expansion to include coach performance or player stats.
+================================================================================
+MODEL EXPLANATION
+================================================================================
+
+HOW IT WORKS:
+--------------------------------------------------------------------------------
+1. The model learns patterns from teams' offensive and defensive statistics
+2. It combines performance metrics like shooting efficiency, rebounds, assists
+3. Historical performance indicators (previous season win %) are considered
+4. The model predicts the conference rank directly as a numeric value
+5. Predictions are evaluated against actual final standings
+
+DATA LEAKAGE PREVENTION:
+--------------------------------------------------------------------------------
+The following variables were EXCLUDED to prevent data leakage:
+- rank, won, lost (outcome variables)
+- playoff, firstRound, semis, finals (derived from rank)
+- rs_win_pct, po_W, po_L, po_win_pct (direct win/loss metrics)
+- homeW, homeL, awayW, awayL, confW, confL (split win/loss records)
+
+FEATURES USED:
+--------------------------------------------------------------------------------
+The model uses:
+- Offensive statistics (field goals, free throws, 3-pointers, rebounds, etc.)
+- Defensive statistics (opponent's shooting, turnovers, steals, blocks)
+- Aggregate metrics (pythag win %, team strength, expected roster performance)
+- Historical indicators (previous season win %, win % change)
+
+FUTURE IMPROVEMENTS:
+--------------------------------------------------------------------------------
+1. Incorporate player performance metrics (scoring, efficiency, experience)
+2. Add coach performance indicators (years of experience, past success)
+3. Include rookie development features
+4. Consider team chemistry and roster stability metrics
+5. Experiment with ensemble methods or deep learning approaches
+6. Add cross-validation for more robust evaluation
+7. Feature engineering: create interaction terms and derived statistics
+
+================================================================================
+END OF REPORT
+================================================================================
