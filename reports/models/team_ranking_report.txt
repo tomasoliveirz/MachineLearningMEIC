@@ -108,15 +108,3 @@ PHO      Phoenix Mercury           6      7     4.59
 ================================================================================
 ANTI-LEAKAGE & ANTI-OVERFITTING CHECKLIST
 --------------------------------------------------------------------------------
-✓ Temporal split (no random shuffle)
-✓ Excluded: won, lost, GP, season_win_pct, playoff flags
-✓ Excluded: homeW, homeL, awayW, awayL, confW, confL
-✓ Excluded: po_W, po_L, po_win_pct (playoff outcomes)
-✓ Walk-forward CV on training set (realistic evaluation)
-✓ Regularized hyperparameters (max_depth, learning_rate, subsample)
-✓ Test set touched only once (no tuning on test)
-✓ Conference-aware ranking (within East/West)
-
-================================================================================
-END OF REPORT
-================================================================================
