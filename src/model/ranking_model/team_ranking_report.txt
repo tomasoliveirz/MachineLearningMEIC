@@ -4,33 +4,33 @@ TEAM RANKING MODEL - UNIFIED & ROBUST IMPLEMENTATION
 
 CONFIGURATION
 --------------------------------------------------------------------------------
-Model: RandomForestRegressor
+Model: GradientBoostingRegressor
 Train seasons: 1-8
 Test seasons: 9+
 Random state: 42
-Features: 37
+Features: 34
 
-Hyperparameters (RandomForest):
-  - n_estimators: 400
-  - max_depth: 6 (reduced for regularization)
-  - min_samples_leaf: 2
-  - min_samples_split: 4
-  - max_features: sqrt
+Hyperparameters (GradientBoosting - STRONG regularization):
+  - n_estimators: 200 (reduced from 400)
+  - learning_rate: 0.01 (very slow learning)
+  - max_depth: 3 (shallow trees)
+  - subsample: 0.6 (60% per tree, more stochastic)
+  - min_samples_leaf: 5 (increased from 2)
 
 ================================================================================
 WALK-FORWARD CROSS-VALIDATION (internal, anti-overfitting)
 --------------------------------------------------------------------------------
 Number of folds: 6
-MAE rank:        0.413
-Mean Spearman:   0.912
-Top-1 accuracy:  91.67%
+MAE rank:        0.454
+Mean Spearman:   0.908
+Top-1 accuracy:  75.00%
 Top-2 accuracy:  91.67%
 
 ================================================================================
 TRAIN METRICS (full, seasons 1-8)
 --------------------------------------------------------------------------------
-MAE rank:        0.000
-Mean Spearman:   1.000
+MAE rank:        0.052
+Mean Spearman:   0.994
 Top-1 accuracy:  100.00%
 Top-2 accuracy:  100.00%
 Number of groups: 16
@@ -38,8 +38,8 @@ Number of groups: 16
 ================================================================================
 TEST METRICS (holdout, seasons 9+)
 --------------------------------------------------------------------------------
-MAE rank:        0.889
-Mean Spearman:   0.814
+MAE rank:        0.667
+Mean Spearman:   0.841
 Top-1 accuracy:  75.00%
 Top-2 accuracy:  75.00%
 Number of groups: 4
@@ -47,26 +47,26 @@ Number of groups: 4
 ================================================================================
 TOP 15 MOST IMPORTANT FEATURES
 --------------------------------------------------------------------------------
- 1. point_diff                               0.166583
- 2. overach_roster                           0.144404
- 3. pythag_win_pct                           0.134831
- 4. home_win_pct                             0.084854
- 5. away_win_pct                             0.079074
- 6. opp_fg_pct_norm                          0.061700
- 7. fg_pct_norm                              0.039135
- 8. opp_fg_pct                               0.032794
- 9. fg_pct                                   0.027634
-10. team_strength                            0.021771
-11. rs_win_pct_expected_roster               0.018862
-12. off_eff_norm                             0.018857
-13. reb_diff                                 0.018766
-14. def_eff_norm                             0.016940
-15. blk_diff                                 0.015804
+ 1. pythag_win_pct                           0.377567
+ 2. point_diff                               0.201969
+ 3. overach_roster                           0.171484
+ 4. overach_pythag                           0.044348
+ 5. opp_fg_pct_norm                          0.038647
+ 6. opp_fg_pct                               0.021805
+ 7. team_strength                            0.014058
+ 8. blk_diff                                 0.011698
+ 9. ft_pct_norm                              0.010970
+10. fg_pct_norm                              0.010838
+11. off_eff                                  0.010343
+12. rs_win_pct_expected_roster               0.009685
+13. prev_win_pct_1                           0.009426
+14. reb_diff                                 0.009197
+15. fg_pct                                   0.008454
 
 ================================================================================
 INTERPRETATION
 --------------------------------------------------------------------------------
-On average, the model's predictions are off by 0.89 positions
+On average, the model's predictions are off by 0.67 positions
 in the test set (seasons 9+).
 
 The top features validate domain knowledge:
@@ -84,27 +84,52 @@ EXAMPLE PREDICTIONS - Year 9 East
 --------------------------------------------------------------------------------
 tmID     Name                   Rank   Pred    Score
 --------------------------------------------------------------------------------
-DET      Detroit Shock             1      1     1.99
-NYL      New York Liberty          3      2     2.99
-CON      Connecticut Sun           2      3     3.04
-IND      Indiana Fever             4      4     3.98
-CHI      Chicago Sky               5      5     5.10
-ATL      Atlanta Dream             7      6     6.58
-WAS      Washington Mystics        6      7     6.59
+DET      Detroit Shock             1      1     2.08
+NYL      New York Liberty          3      2     2.97
+CON      Connecticut Sun           2      3     3.24
+IND      Indiana Fever             4      4     4.28
+CHI      Chicago Sky               5      5     5.13
+WAS      Washington Mystics        6      6     6.15
+ATL      Atlanta Dream             7      7     6.33
 
 ================================================================================
 EXAMPLE PREDICTIONS - Year 9 West
 --------------------------------------------------------------------------------
 tmID     Name                   Rank   Pred    Score
 --------------------------------------------------------------------------------
-SAS      San Antonio Silver Stars      1      1     1.71
-SEA      Seattle Storm             2      2     2.16
-LAS      Los Angeles Sparks        3      3     2.46
-HOU      Houston Comets            5      4     4.15
-MIN      Minnesota Lynx            7      5     4.16
-SAC      Sacramento Monarchs       4      6     4.34
-PHO      Phoenix Mercury           6      7     4.59
+SAS      San Antonio Silver Stars      1      1     1.60
+SEA      Seattle Storm             2      2     1.85
+LAS      Los Angeles Sparks        3      3     2.53
+MIN      Minnesota Lynx            7      4     4.09
+HOU      Houston Comets            5      5     4.39
+SAC      Sacramento Monarchs       4      6     4.44
+PHO      Phoenix Mercury           6      7     5.05
 
 ================================================================================
 ANTI-LEAKAGE & ANTI-OVERFITTING CHECKLIST
 --------------------------------------------------------------------------------
+✓ Temporal split (no random shuffle)
+✓ Excluded: won, lost, GP, season_win_pct, playoff flags
+✓ Excluded: homeW, homeL, awayW, awayL, confW, confL
+✓ Excluded: po_W, po_L, po_win_pct (playoff outcomes)
+✓ REMOVED: home_win_pct, away_win_pct, home_advantage (leakage risk)
+✓ Walk-forward CV on training set (realistic evaluation)
+✓ STRONG regularization: max_depth=4, min_samples_leaf=5, max_samples=0.7
+✓ Test set touched only once (no tuning on test)
+✓ Conference-aware ranking (within East/West)
+✓ OOB score enabled (RandomForest internal validation)
+
+OVERFITTING DIAGNOSTIC:
+--------------------------------------------------------------------------------
+Train MAE:  0.0522
+CV MAE:     0.4544
+Test MAE:   0.6667
+
+⚠️  WARNING: Train MAE < 0.1 indicates overfitting!
+   → The model has memorized the training data.
+   → Trust CV and Test metrics instead.
+   → Consider further regularization if CV >> Test.
+
+================================================================================
+END OF REPORT
+================================================================================

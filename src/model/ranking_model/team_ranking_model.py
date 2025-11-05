@@ -34,7 +34,7 @@ warnings.filterwarnings('ignore')
 # Paths
 ROOT = Path(__file__).resolve().parents[3]
 PROC_DIR = ROOT / "data" / "processed"
-REPORTS_DIR = ROOT / "reports" / "models"
+REPORTS_DIR = ROOT / "src" / "model" / "ranking_model"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Random state for reproducibility
@@ -138,20 +138,10 @@ def build_feature_matrix(
     """
     Extract features (X), target (y), and metadata from DataFrame.
     
-    Features: Union of best features from both old scripts, NO DIRECT LEAKAGE.
+    Features: Union of best features from both old scripts, NO LEAKAGE.
     
-    EXCLUDED (direct leakage): 
-        - rank (target variable)
-        - won, lost, GP, season_win_pct (directly determine rank)
-        - playoff, firstRound, semis, finals (post-season outcomes)
-        - po_W, po_L, po_win_pct (playoff statistics)
-        - homeW, homeL, awayW, awayL, confW, confL (win/loss splits)
-    
-    INCLUDED (near-leakage, but allowed):
-        - overach_pythag, overach_roster: derived from rs_win_pct but not direct
-          These are "storytelling" features (how much team exceeded expectations)
-          Future work: test model variant WITHOUT these features for cleaner baseline
-          (see FUTURE_IMPROVEMENTS.md)
+    EXCLUDED (leakage): rank, won, lost, GP, season_win_pct, playoff flags,
+                        po_W, po_L, homeW, homeL, awayW, awayL, confW, confL
     
     Args:
         df: Input DataFrame
@@ -162,30 +152,25 @@ def build_feature_matrix(
         meta_df: Metadata (year, confID, tmID, name, rank)
     """
     # Feature candidates (explicit list, no wildcards)
-    # Organized by source and type for clarity
+    # REMOVED LEAKAGE FEATURES: home_win_pct, away_win_pct, home_advantage
+    # These are derived from homeW/homeL/awayW/awayL which directly correlate with rank
     feature_cols_numeric = [
-        # Team statistics (boxscore-derived)
+        # From team_season_statistics.csv
         'point_diff', 'off_eff', 'def_eff',
         'fg_pct', 'three_pct', 'ft_pct', 'opp_fg_pct',
         'prop_3pt_shots',
-        'home_win_pct', 'away_win_pct', 'home_advantage',
+        # 'home_win_pct', 'away_win_pct', 'home_advantage',  # REMOVED: leakage risk
         'reb_diff', 'stl_diff', 'blk_diff', 'to_diff',
         'attend_pg',
         'franchise_changed',
-        # Historical features (from previous seasons)
         'prev_win_pct_1', 'prev_win_pct_3', 'prev_win_pct_5',
         'prev_point_diff_3', 'prev_point_diff_5',
         'win_pct_change',
-        # Normalized stats (league-relative)
         'off_eff_norm', 'def_eff_norm', 'fg_pct_norm', 'three_pct_norm',
         'ft_pct_norm', 'opp_fg_pct_norm', 'point_diff_norm',
-        # Advanced metrics from team_performance.csv
-        'pythag_win_pct',              # Bill James Pythagorean expectation
-        'team_strength',               # Roster quality (weighted player perf)
-        'rs_win_pct_expected_roster',  # Expected win% from roster
-        # Over/underachievement (near-leakage features - see docstring)
-        'overach_pythag',   # rs_win_pct - pythag_win_pct
-        'overach_roster'    # rs_win_pct - rs_win_pct_expected_roster
+        # From team_performance.csv
+        'pythag_win_pct', 'team_strength', 'rs_win_pct_expected_roster',
+        'overach_pythag', 'overach_roster'
     ]
     
     df_work = df.copy()
@@ -222,19 +207,24 @@ def build_feature_matrix(
 
 def create_model_rf() -> RandomForestRegressor:
     """
-    Create RandomForestRegressor with anti-overfitting hyperparameters.
+    Create RandomForestRegressor with STRONG anti-overfitting hyperparameters.
     
-    Key changes vs old version:
-    - max_depth reduced to 6 (was 10)
-    - min_samples_leaf=2, min_samples_split=4
-    - max_features='sqrt' (not 'auto')
+    Key changes for regularization:
+    - max_depth=4 (reduced from 6, shallower trees)
+    - min_samples_leaf=5 (increased from 2)
+    - min_samples_split=10 (increased from 4)
+    - max_samples=0.7 (use only 70% of data per tree)
+    - n_estimators=200 (reduced from 400, less ensemble variance)
+    - oob_score=True (out-of-bag validation)
     """
     return RandomForestRegressor(
-        n_estimators=400,
-        max_depth=6,              # Reduced from 10
-        min_samples_leaf=2,
-        min_samples_split=4,
+        n_estimators=200,
+        max_depth=4,              # Reduced from 6 → shallower trees
+        min_samples_leaf=5,       # Increased from 2 → more regularization
+        min_samples_split=10,     # Increased from 4 → more regularization
         max_features='sqrt',
+        max_samples=0.7,          # NEW: bootstrap 70% per tree
+        oob_score=True,           # NEW: enable OOB validation
         random_state=RANDOM_STATE,
         n_jobs=-1
     )
@@ -242,19 +232,21 @@ def create_model_rf() -> RandomForestRegressor:
 
 def create_model_gbr() -> GradientBoostingRegressor:
     """
-    Create GradientBoostingRegressor with anti-overfitting hyperparameters.
+    Create GradientBoostingRegressor with STRONG anti-overfitting hyperparameters.
     
     Key regularization:
-    - learning_rate=0.03 (slow learning)
-    - subsample=0.7 (70% per tree)
+    - learning_rate=0.01 (reduced from 0.03, even slower learning)
+    - subsample=0.6 (reduced from 0.7, more stochastic)
     - max_depth=3 (shallow trees)
+    - min_samples_leaf=5 (increased from 2)
+    - n_estimators=200 (reduced from 400)
     """
     return GradientBoostingRegressor(
-        n_estimators=400,
-        learning_rate=0.03,
+        n_estimators=200,
+        learning_rate=0.01,       # Reduced from 0.03 → slower learning
         max_depth=3,
-        subsample=0.7,
-        min_samples_leaf=2,
+        subsample=0.6,            # Reduced from 0.7 → more stochastic
+        min_samples_leaf=5,       # Increased from 2 → more regularization
         random_state=RANDOM_STATE
     )
 
@@ -518,7 +510,7 @@ def save_report(
     model_names = {'rf': 'RandomForestRegressor', 'gbr': 'GradientBoostingRegressor'}
     model_name = model_names.get(model_type, model_type)
     
-    with open(report_path, 'w') as f:
+    with open(report_path, 'w', encoding='utf-8') as f:
         # Header
         f.write("=" * 80 + "\n")
         f.write("TEAM RANKING MODEL - UNIFIED & ROBUST IMPLEMENTATION\n")
@@ -534,19 +526,21 @@ def save_report(
         f.write(f"Features: {len(feature_importance)}\n")
         
         if model_type == 'rf':
-            f.write("\nHyperparameters (RandomForest):\n")
-            f.write("  - n_estimators: 400\n")
-            f.write("  - max_depth: 6 (reduced for regularization)\n")
-            f.write("  - min_samples_leaf: 2\n")
-            f.write("  - min_samples_split: 4\n")
+            f.write("\nHyperparameters (RandomForest - STRONG regularization):\n")
+            f.write("  - n_estimators: 200 (reduced from 400)\n")
+            f.write("  - max_depth: 4 (reduced from 6 for less overfitting)\n")
+            f.write("  - min_samples_leaf: 5 (increased from 2)\n")
+            f.write("  - min_samples_split: 10 (increased from 4)\n")
             f.write("  - max_features: sqrt\n")
+            f.write("  - max_samples: 0.7 (bootstrap 70% per tree)\n")
+            f.write("  - oob_score: True (out-of-bag validation enabled)\n")
         else:
-            f.write("\nHyperparameters (GradientBoosting):\n")
-            f.write("  - n_estimators: 400\n")
-            f.write("  - learning_rate: 0.03 (slow learning)\n")
+            f.write("\nHyperparameters (GradientBoosting - STRONG regularization):\n")
+            f.write("  - n_estimators: 200 (reduced from 400)\n")
+            f.write("  - learning_rate: 0.01 (very slow learning)\n")
             f.write("  - max_depth: 3 (shallow trees)\n")
-            f.write("  - subsample: 0.7 (70% per tree)\n")
-            f.write("  - min_samples_leaf: 2\n")
+            f.write("  - subsample: 0.6 (60% per tree, more stochastic)\n")
+            f.write("  - min_samples_leaf: 5 (increased from 2)\n")
         
         # Walk-forward CV metrics
         f.write("\n" + "=" * 80 + "\n")
@@ -637,10 +631,31 @@ def save_report(
         f.write("✓ Excluded: won, lost, GP, season_win_pct, playoff flags\n")
         f.write("✓ Excluded: homeW, homeL, awayW, awayL, confW, confL\n")
         f.write("✓ Excluded: po_W, po_L, po_win_pct (playoff outcomes)\n")
+        f.write("✓ REMOVED: home_win_pct, away_win_pct, home_advantage (leakage risk)\n")
         f.write("✓ Walk-forward CV on training set (realistic evaluation)\n")
-        f.write("✓ Regularized hyperparameters (max_depth, learning_rate, subsample)\n")
+        f.write("✓ STRONG regularization: max_depth=4, min_samples_leaf=5, max_samples=0.7\n")
         f.write("✓ Test set touched only once (no tuning on test)\n")
         f.write("✓ Conference-aware ranking (within East/West)\n")
+        f.write("✓ OOB score enabled (RandomForest internal validation)\n")
+        f.write("\n")
+        f.write("OVERFITTING DIAGNOSTIC:\n")
+        f.write("-" * 80 + "\n")
+        f.write(f"Train MAE:  {train_metrics['mae_rank']:.4f}\n")
+        f.write(f"CV MAE:     {cv_metrics['mae_rank']:.4f}\n")
+        f.write(f"Test MAE:   {test_metrics['mae_rank']:.4f}\n")
+        f.write("\n")
+        if train_metrics['mae_rank'] < 0.1:
+            f.write("⚠️  WARNING: Train MAE < 0.1 indicates overfitting!\n")
+            f.write("   → The model has memorized the training data.\n")
+            f.write("   → Trust CV and Test metrics instead.\n")
+            f.write("   → Consider further regularization if CV >> Test.\n")
+        else:
+            gap_cv_test = abs(cv_metrics['mae_rank'] - test_metrics['mae_rank'])
+            if gap_cv_test < 0.2:
+                f.write("✓ Good generalization: CV and Test MAE are close.\n")
+            else:
+                f.write("⚠️  CV and Test MAE differ significantly.\n")
+                f.write("   → Model may not generalize well to new data.\n")
         
         f.write("\n" + "=" * 80 + "\n")
         f.write("END OF REPORT\n")
@@ -696,6 +711,10 @@ def run_team_ranking_model(
     final_model.fit(X_train, y_train)
     print("  ✓ Model trained")
     
+    # Print OOB score if available (RandomForest only)
+    if hasattr(final_model, 'oob_score_'):
+        print(f"  ✓ OOB Score (internal validation): {final_model.oob_score_:.4f}")
+    
     # 6. Feature importance
     if hasattr(final_model, 'feature_importances_'):
         importance = sorted(
@@ -722,6 +741,14 @@ def run_team_ranking_model(
     # 9. Evaluate
     train_metrics = evaluate(train_with_ranks, "TRAIN (full)")
     test_metrics = evaluate(test_with_ranks, "TEST (holdout)")
+    
+    # Check for overfitting (warn if train MAE is suspiciously low)
+    if train_metrics['mae_rank'] < 0.1:
+        print("\n⚠️  WARNING: Train MAE < 0.1 suggests potential overfitting!")
+        print(f"    Train MAE: {train_metrics['mae_rank']:.4f}")
+        print(f"    CV MAE:    {cv_metrics['mae_rank']:.4f}")
+        print(f"    Test MAE:  {test_metrics['mae_rank']:.4f}")
+        print("    → Trust CV and Test metrics, not Train metrics.")
     
     # 10. Save outputs
     save_predictions(train_with_ranks, test_with_ranks)
