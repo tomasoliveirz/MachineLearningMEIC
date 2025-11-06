@@ -658,6 +658,18 @@ def save_report(
         f.write("Top-K Accuracy:\n")
         for k in range(1, 11):
             f.write(f"  Top-{k:2d}: {top_k_acc[k]:.2%}\n")
+        # Overall accuracy: proportion of individual team predictions where pred_rank == rank
+        valid_rows = df_test[ df_test['rank'].notna() & df_test['pred_rank'].notna() ]
+        total_rows = len(valid_rows)
+        if total_rows > 0:
+            correct_rows = int((valid_rows['rank'].astype(int) == valid_rows['pred_rank'].astype(int)).sum())
+            overall_acc = correct_rows / total_rows
+        else:
+            correct_rows = 0
+            overall_acc = 0.0
+
+        f.write("\n")
+        f.write(f"Overall_accuracy: {overall_acc:.2%} ({correct_rows}/{total_rows})\n")
 
     print(f"[TeamRanking] Report saved to {report_path}")
     return report_path
@@ -734,7 +746,7 @@ def run_team_ranking_model(
 
 if __name__ == "__main__":
     # ======== Configurations ========
-    MAX_TRAIN_YEAR = 9                 # Last
+    MAX_TRAIN_YEAR = 8                 # Last
     REPORT_NAME = "team_ranking_report.txt"  # Nome do arquivo de saída
     # =====================================
 
