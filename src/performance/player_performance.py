@@ -4,11 +4,22 @@
 """
 Calculate player performance using position-specific weights applied to per-36 stats.
 
-This module computes a composite performance metric for each player-season by:
+CRITICAL: This module computes player performance based EXCLUSIVELY on individual
+player statistics (points, rebounds, assists, steals, blocks, turnovers, etc.).
+It does NOT use team wins, losses, games played, or team ranking as inputs.
+
+This ensures player performance is a "predictive-safe" metric that can be aggregated
+to team_strength and used in forecasting models without target leakage.
+
+Pipeline:
   1. Aggregating multi-stint rows to (bioID, year, tmID) level
   2. Converting raw stats to per-36-minute rates
   3. Applying position-specific weights from weights_positions.json
   4. Using team/position means as fallback for low-minute players
+
+Output: data/processed/player_performance.csv
+  - Columns: bioID, year, tmID, position, minutes, [stats], performance
+  - performance: weighted sum of per-36 stats (NOT dependent on team wins/losses)
 """
 
 from pathlib import Path

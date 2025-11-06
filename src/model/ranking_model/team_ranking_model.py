@@ -16,7 +16,7 @@ warnings.filterwarnings('ignore')
 # Paths
 ROOT = Path(__file__).resolve().parents[3]
 PROC_DIR = ROOT / "data" / "processed"
-REPORTS_DIR = ROOT / "src" / "model" / "ranking_model"
+REPORTS_DIR = ROOT / "reports" / "models"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Random state for reproducibility
@@ -172,16 +172,38 @@ def split_train_test(
 # =============================================================================
 
 def build_feature_matrix(
-    df: pd.DataFrame
+    df: pd.DataFrame,
+    strict_predictive: bool = True
 ) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
     """
     Extract features (X), target (y), and metadata from DataFrame.
-    Features: Union of best features from both old scripts + temporal features.
-    EXCLUDED: rank, won, lost, GP, season_win_pct, playoff flags,
-                        po_W, po_L, homeW, homeL, awayW, awayL, confW, confL
+    
+    Args:
+        df: DataFrame with team-season data
+        strict_predictive: If True, uses only features available pre-season (no leakage).
+                          If False, uses all features including in-season stats and 
+                          overachievement metrics (descriptive/post-season analysis mode).
+    
+    Mode Descriptions:
+        - STRICT PREDICTIVE (strict_predictive=True):
+          * Removes all features that contain end-of-season results
+          * Excludes: overach_pythag, overach_roster, rs_win_pct_expected_roster
+          * Excludes: All boxscore stats from current season (point_diff, off_eff, etc.)
+          * Uses only: historical features (prev_*, ma*, trend*), team_strength, franchise flags
+          * Suitable for: Pre-season forecasting, fair model evaluation
+        
+        - DESCRIPTIVE (strict_predictive=False):
+          * Uses all features including current season boxscore and overachievement
+          * Includes: pythag_win_pct, overach_*, rs_win_pct_expected_roster
+          * Suitable for: Post-season analysis, understanding what explains final rankings
+    
+    EXCLUDED from both modes: rank, won, lost, GP, season_win_pct, playoff flags,
+                              po_W, po_L, homeW, homeL, awayW, awayL, confW, confL
     """
-    feature_cols_numeric = [
-        # From team_season_statistics.csv
+    
+    # DESCRIPTIVE MODE: Includes in-season stats and overachievement metrics
+    feature_cols_numeric_descriptive = [
+        # Boxscore stats from CURRENT SEASON (contains end-of-season results)
         'point_diff', 'off_eff', 'def_eff',
         'fg_pct', 'three_pct', 'ft_pct', 'opp_fg_pct',
         'prop_3pt_shots',
@@ -193,16 +215,45 @@ def build_feature_matrix(
         'win_pct_change',
         'off_eff_norm', 'def_eff_norm', 'fg_pct_norm', 'three_pct_norm',
         'ft_pct_norm', 'opp_fg_pct_norm', 'point_diff_norm',
-        # From team_performance.csv
+        # From team_performance.csv (contains rs_win_pct derivatives)
         'pythag_win_pct', 'team_strength', 'rs_win_pct_expected_roster',
         'overach_pythag', 'overach_roster',
-        # Temporal features (rolling averages and trends)
+        # Temporal features (rolling averages and trends from past seasons)
         'point_diff_ma3', 'point_diff_ma5', 'point_diff_trend3', 'point_diff_trend5',
         'off_eff_ma3', 'off_eff_ma5', 'off_eff_trend3', 'off_eff_trend5',
         'def_eff_ma3', 'def_eff_ma5', 'def_eff_trend3', 'def_eff_trend5',
         'pythag_win_pct_ma3', 'pythag_win_pct_ma5', 'pythag_win_pct_trend3', 'pythag_win_pct_trend5',
         'team_strength_ma3', 'team_strength_ma5', 'team_strength_trend3', 'team_strength_trend5'
     ]
+    
+    # PREDICTIVE MODE: Only features available pre-season (no leakage)
+    feature_cols_numeric_predictive = [
+        # Historical performance (from previous seasons only)
+        'prev_win_pct_1', 'prev_win_pct_3', 'prev_win_pct_5',
+        'prev_point_diff_3', 'prev_point_diff_5',
+        'win_pct_change',
+        
+        # Roster quality (can be estimated pre-season from player metrics)
+        'team_strength',
+        
+        # Rolling averages and trends (computed from past seasons with shift(1))
+        'point_diff_ma3', 'point_diff_ma5', 'point_diff_trend3', 'point_diff_trend5',
+        'off_eff_ma3', 'off_eff_ma5', 'off_eff_trend3', 'off_eff_trend5',
+        'def_eff_ma3', 'def_eff_ma5', 'def_eff_trend3', 'def_eff_trend5',
+        'pythag_win_pct_ma3', 'pythag_win_pct_ma5', 'pythag_win_pct_trend3', 'pythag_win_pct_trend5',
+        'team_strength_ma3', 'team_strength_ma5', 'team_strength_trend3', 'team_strength_trend5',
+        
+        # Structural context (not tied to game results)
+        'franchise_changed',
+    ]
+    
+    # Select feature set based on mode
+    if strict_predictive:
+        feature_cols_numeric = feature_cols_numeric_predictive
+        print("[build_feature_matrix] Using STRICT PREDICTIVE feature set (no in-season stats, no overach_*).")
+    else:
+        feature_cols_numeric = feature_cols_numeric_descriptive
+        print("[build_feature_matrix] Using DESCRIPTIVE feature set (includes in-season and overach_*).")
     
     df_work = df.copy()
     
@@ -222,6 +273,45 @@ def build_feature_matrix(
         df_work[feature_cols_numeric],
         conf_dummies
     ], axis=1)
+    
+    # GUARDRAIL: Detect leakage-prone features in strict predictive mode
+    if strict_predictive:
+        # These substrings indicate columns that contain current-season results
+        # and must NOT appear in X when forecasting
+        # EXCEPTION: Temporal features (with suffixes _ma3, _ma5, _trend3, _trend5)
+        # use .shift(1) and only contain past data, so they're safe even if base
+        # column name is forbidden
+        forbidden_substrings = [
+            'won', 'lost', 'GP', 
+            'homeW', 'homeL', 'awayW', 'awayL',
+            'confW', 'confL',
+            'rs_win_pct', 'pythag_win_pct',
+            'overach', 
+            'po_W', 'po_L', 'po_win_pct'
+        ]
+        
+        # Safe suffixes that indicate temporal features (past data only)
+        safe_temporal_suffixes = ('_ma3', '_ma5', '_trend3', '_trend5', '_prev')
+        
+        bad_cols = []
+        for c in X.columns:
+            # Skip if it's a temporal feature (ends with safe suffix)
+            if any(c.endswith(suffix) for suffix in safe_temporal_suffixes):
+                continue
+            # Check if it contains forbidden substrings
+            if any(fs in c for fs in forbidden_substrings):
+                bad_cols.append(c)
+        
+        if bad_cols:
+            raise RuntimeError(
+                f"[STRICT_PREDICTIVE GUARDRAIL TRIGGERED]\n"
+                f"Forbidden leakage-prone features detected in feature matrix X:\n"
+                f"  {bad_cols}\n\n"
+                f"These features contain current-season results and cannot be used "
+                f"for forecasting.\n"
+                f"If you need these features, use strict_predictive=False (descriptive mode)."
+            )
+        print(f"  ✓ Guardrail passed: no leakage-prone features detected in X ({len(X.columns)} features)")
     
     # Target (rank within conference)
     y = pd.to_numeric(df_work['rank'], errors='coerce')
@@ -523,7 +613,8 @@ def save_report(
     train_metrics: Dict,
     test_metrics: Dict,
     test_df: pd.DataFrame,
-    report_name: str = "team_ranking_report_metrics.txt"
+    report_name: str = "team_ranking_report_metrics.txt",
+    strict_predictive: bool = True
 ) -> Path:
     """
     Gera relatório com métricas calculadas a partir do CSV salvo (team_ranking_predictions.csv).
@@ -539,6 +630,7 @@ def save_report(
         test_metrics: Métricas de teste (não usado)
         test_df: DataFrame de teste (não usado - lê do CSV)
         report_name: Nome do arquivo de relatório
+        strict_predictive: Whether model used strict predictive mode (no leakage)
         
     Returns:
         Path do arquivo de relatório gerado
@@ -650,6 +742,7 @@ def save_report(
     
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(f"GENERATED: {now} UTC\n")
+        f.write(f"MODE: {'STRICT_PREDICTIVE' if strict_predictive else 'DESCRIPTIVE'}\n")
         f.write(f"TRAIN_SEASONS: 1-{max_train_year}\n")
         f.write(f"TEST_SEASONS: {max_train_year + 1}+\n\n")
         f.write(f"MAE_rank: {mae_rank:.4f}\n")
@@ -681,7 +774,8 @@ def save_report(
 
 def run_team_ranking_model(
     max_train_year: int = 8,
-    report_name: str = "team_ranking_report_enhanced.txt"
+    report_name: str = "team_ranking_report_enhanced.txt",
+    strict_predictive: bool = True
 ) -> None:
     """
     Main pipeline: Enhanced team ranking model with temporal features and pairwise learning.
@@ -690,9 +784,15 @@ def run_team_ranking_model(
     Args:
         max_train_year: Last season for training (default: 8)
         report_name: Output report filename
+        strict_predictive: If True, uses only pre-season features (no leakage).
+                          If False, uses all features including in-season stats (descriptive mode).
     """
     print("\n" + "=" * 80)
     print("TEAM RANKING MODEL")
+    if strict_predictive:
+        print("MODE: STRICT PREDICTIVE (pre-season forecasting, no leakage)")
+    else:
+        print("MODE: DESCRIPTIVE (post-season analysis, includes in-season stats)")
     print("=" * 80)
     
     # 1. Load and merge data
@@ -705,8 +805,8 @@ def run_team_ranking_model(
     train_raw, test_raw = split_train_test(df_all, max_train_year)
     
     # 4. Build features
-    X_train, y_train, meta_train = build_feature_matrix(train_raw)
-    X_test, y_test, meta_test = build_feature_matrix(test_raw)
+    X_train, y_train, meta_train = build_feature_matrix(train_raw, strict_predictive=strict_predictive)
+    X_test, y_test, meta_test = build_feature_matrix(test_raw, strict_predictive=strict_predictive)
     
     # 5. Generate pairwise training data
     X_pairs_train, y_pairs_train = generate_pairwise_data(train_raw, X_train, y_train)
@@ -736,7 +836,8 @@ def run_team_ranking_model(
     save_report(
         max_train_year, best_params, best_cv_score,
         train_metrics, test_metrics,
-        test_with_ranks, report_name
+        test_with_ranks, report_name,
+        strict_predictive=strict_predictive
     )
 
 
@@ -746,11 +847,17 @@ def run_team_ranking_model(
 
 if __name__ == "__main__":
     # ======== Configurations ========
-    MAX_TRAIN_YEAR = 8                 # Last
-    REPORT_NAME = "team_ranking_report.txt"  # Nome do arquivo de saída
+    MAX_TRAIN_YEAR = 8                 # Last year for training
+    REPORT_NAME = "team_ranking_report.txt"  # Output report filename
+    
+    # Mode selection:
+    # - STRICT_PREDICTIVE=True: Pre-season forecasting (no leakage, fair evaluation)
+    # - STRICT_PREDICTIVE=False: Post-season analysis (includes in-season stats)
+    STRICT_PREDICTIVE = True
     # =====================================
 
     run_team_ranking_model(
         max_train_year=MAX_TRAIN_YEAR,
-        report_name=REPORT_NAME
+        report_name=REPORT_NAME,
+        strict_predictive=STRICT_PREDICTIVE
     )

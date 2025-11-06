@@ -184,9 +184,16 @@ def attach_playoffs(df: pd.DataFrame, teams_post: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def compute_overachieves(df: pd.DataFrame) -> pd.DataFrame:
+def compute_overachieves(df: pd.DataFrame, max_train_year: int | None = None) -> pd.DataFrame:
     """
     Compute overachievement metrics and roster-based expectations.
+    
+    Args:
+        df: DataFrame with team performance data
+        max_train_year: If provided, fit regression only on years <= max_train_year
+                       to avoid temporal leakage. Predictions are made for all years.
+                       This is critical for predictive models to ensure test data
+                       doesn't influence the regression coefficients.
     
     TODO (Future work): Consider using Ridge(alpha=1.0) instead of LinearRegression
     to stabilize coefficients with small sample sizes (~142 team-seasons).
@@ -194,7 +201,17 @@ def compute_overachieves(df: pd.DataFrame) -> pd.DataFrame:
     in overach_roster metric. See FUTURE_IMPROVEMENTS.md for details.
     """
     # Fit linear regression: rs_win_pct ~ team_strength
-    valid = df[df['team_strength'].notna() & df['rs_win_pct'].notna()].copy()
+    # If max_train_year is specified, only fit on training years to avoid temporal leakage
+    if max_train_year is not None:
+        valid = df[
+            (df['team_strength'].notna()) &
+            (df['rs_win_pct'].notna()) &
+            (df['year'] <= max_train_year)
+        ].copy()
+        print(f"[Team Performance] Fitting roster regression on years <= {max_train_year} (temporal split)")
+    else:
+        valid = df[df['team_strength'].notna() & df['rs_win_pct'].notna()].copy()
+        print("[Team Performance] WARNING: Fitting roster regression on ALL years (includes future/test years)")
     
     if len(valid) > 1:
         from sklearn.linear_model import LinearRegression
@@ -233,10 +250,19 @@ def compute_overachieves(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def main():
-    """Main pipeline"""
+def main(max_train_year: int | None = None):
+    """
+    Main pipeline for team performance calculation.
+    
+    Args:
+        max_train_year: If provided, fit roster regression only on years <= max_train_year
+                       to avoid temporal leakage. Use this when generating data for
+                       predictive models with a train/test split.
+    """
     print("\n" + "="*60)
     print("TEAM PERFORMANCE PIPELINE")
+    if max_train_year is not None:
+        print(f"TEMPORAL SPLIT MODE: Fitting regressions only on years <= {max_train_year}")
     print("="*60)
     
     # 1. Load team season statistics
@@ -275,15 +301,29 @@ def main():
     
     # 5. Compute overachieves
     print("\n[5/5] Computing overachievement metrics...")
-    df = compute_overachieves(df)
+    df = compute_overachieves(df, max_train_year=max_train_year)
     
     # Select canonical columns
+    # CLASSIFICATION FOR PREDICTIVE MODELING:
+    #   - predictive-safe: Can be used as features for forecasting (known pre-season or from past)
+    #   - descriptive-only: Contains current-season results (cannot be used for forecasting)
     canonical_cols = [
-        'team_id', 'year', 'GP', 'won', 'lost', 'rs_win_pct',
-        'pythag_win_pct', 'team_strength', 'rs_win_pct_expected_roster',
-        'overach_pythag', 'overach_roster',
-        'po_W', 'po_L', 'po_win_pct',
-        'rs_win_pct_prev', 'win_pct_change'
+        'team_id',                       # predictive-safe (identifier)
+        'year',                          # predictive-safe (identifier)
+        'GP',                            # descriptive-only (current season games played)
+        'won',                           # descriptive-only (current season wins)
+        'lost',                          # descriptive-only (current season losses)
+        'rs_win_pct',                    # descriptive-only (won/GP of current season)
+        'pythag_win_pct',                # descriptive-only (uses current season o_pts/d_pts)
+        'team_strength',                 # predictive-safe (roster quality, derived from player stats)
+        'rs_win_pct_expected_roster',    # descriptive-only (regression uses rs_win_pct)
+        'overach_pythag',                # descriptive-only (rs_win_pct - pythag_win_pct)
+        'overach_roster',                # descriptive-only (rs_win_pct - rs_win_pct_expected_roster)
+        'po_W',                          # descriptive-only (playoff wins)
+        'po_L',                          # descriptive-only (playoff losses)
+        'po_win_pct',                    # descriptive-only (playoff win rate)
+        'rs_win_pct_prev',               # predictive-safe (previous season win rate)
+        'win_pct_change'                 # predictive-safe (change from previous season)
     ]
     
     # Keep only columns that exist
@@ -305,4 +345,18 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description="Compute team performance metrics including Pythagorean expectation and roster strength."
+    )
+    parser.add_argument(
+        "--max-train-year",
+        type=int,
+        default=None,
+        help="If set, fit roster regression only on years <= max_train_year to avoid temporal leakage. "
+             "Use this when generating data for predictive models with a train/test split."
+    )
+    args = parser.parse_args()
+    
+    main(max_train_year=args.max_train_year)
