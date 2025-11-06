@@ -1,143 +1,19 @@
-================================================================================
-TEAM RANKING MODEL - ENHANCED WITH TEMPORAL FEATURES & PAIRWISE LEARNING
-================================================================================
+GENERATED: 2025-11-06 11:42:00 UTC
+TRAIN_SEASONS: 1-9
+TEST_SEASONS: 10+
 
-CONFIGURATION
---------------------------------------------------------------------------------
-Model: GradientBoostingClassifier (Pairwise Learning-to-Rank)
-Train seasons: 1-8
-Test seasons: 9+
-Random state: 42
+MAE_rank: 0.3077
+Mean_Spearman: 0.9464
+n_groups: 2
 
-Enhancements:
-  1. Temporal features: Rolling averages (MA3, MA5) and trends
-  2. Pairwise training: RankNet-style pairwise comparison
-  3. Hyperparameter optimization: RandomizedSearchCV + TimeSeriesSplit
-
-Best Hyperparameters (from RandomizedSearchCV):
-  - ccp_alpha: 0.0
-  - criterion: friedman_mse
-  - init: None
-  - learning_rate: 0.1
-  - loss: log_loss
-  - max_depth: 3
-  - max_features: None
-  - max_leaf_nodes: None
-  - min_impurity_decrease: 0.0
-  - min_samples_leaf: 2
-  - min_samples_split: 2
-  - min_weight_fraction_leaf: 0.0
-  - n_estimators: 100
-  - n_iter_no_change: None
-  - random_state: 42
-  - subsample: 0.8
-  - tol: 0.0001
-  - validation_fraction: 0.1
-  - verbose: 0
-  - warm_start: False
-  - Best CV score (ROC-AUC): 0.0000
-
-================================================================================
-TRAIN METRICS (full, seasons 1-8)
---------------------------------------------------------------------------------
-MAE rank:        0.087
-Mean Spearman:   0.988
-Number of groups: 16
-
-Top-K Accuracies (champion in predicted top-K):
-  Top- 1 accuracy:  100.00%
-  Top- 2 accuracy:  100.00%
-  Top- 3 accuracy:  100.00%
-  Top- 4 accuracy:  100.00%
-  Top- 5 accuracy:  100.00%
-  Top- 6 accuracy:  100.00%
-  Top- 7 accuracy:  100.00%
-  Top- 8 accuracy:  100.00%
-  Top- 9 accuracy:  100.00%
-  Top-10 accuracy:  100.00%
-
-================================================================================
-TEST METRICS (holdout, seasons 9+)
---------------------------------------------------------------------------------
-MAE rank:        0.222
-Mean Spearman:   0.964
-Number of groups: 4
-
-Top-K Accuracies (champion in predicted top-K):
-  Top- 1 accuracy:  100.00%
-  Top- 2 accuracy:  100.00%
-  Top- 3 accuracy:  100.00%
-  Top- 4 accuracy:  100.00%
-  Top- 5 accuracy:  100.00%
-  Top- 6 accuracy:  100.00%
-  Top- 7 accuracy:  100.00%
-  Top- 8 accuracy:  100.00%
-  Top- 9 accuracy:  100.00%
-  Top-10 accuracy:  100.00%
-
-================================================================================
-INTERPRETATION
---------------------------------------------------------------------------------
-On average, the model's predictions are off by 0.22 positions
-in the test set (seasons 9+).
-
-The pairwise approach learns relative team comparisons:
-- Teams are compared pairwise (A vs B)
-- Model learns which features predict A > B
-- Final ranking aggregates all pairwise predictions
-
-Temporal features capture team momentum:
-- Rolling averages: Recent performance trends
-- Trend slopes: Improving/declining teams
-- All features use ONLY past data (no leakage)
-
-================================================================================
-EXAMPLE PREDICTIONS - Year 9 East
---------------------------------------------------------------------------------
-tmID     Name                   Rank   Pred    Score
---------------------------------------------------------------------------------
-DET      Detroit Shock             1      1     5.99
-CON      Connecticut Sun           2      2     5.01
-NYL      New York Liberty          3      3     4.00
-IND      Indiana Fever             4      4     3.01
-CHI      Chicago Sky               5      5     1.99
-WAS      Washington Mystics        6      6     1.02
-ATL      Atlanta Dream             7      7     0.00
-
-================================================================================
-EXAMPLE PREDICTIONS - Year 9 West
---------------------------------------------------------------------------------
-tmID     Name                   Rank   Pred    Score
---------------------------------------------------------------------------------
-SAS      San Antonio Silver Stars      1      1     5.99
-SEA      Seattle Storm             2      2     5.00
-LAS      Los Angeles Sparks        3      3     4.01
-SAC      Sacramento Monarchs       4      4     2.77
-MIN      Minnesota Lynx            7      5     2.02
-HOU      Houston Comets            5      6     1.55
-PHO      Phoenix Mercury           6      7     0.95
-
-================================================================================
-ANTI-LEAKAGE & GENERALIZATION CHECKLIST
---------------------------------------------------------------------------------
-✓ Temporal split (no random shuffle)
-✓ Excluded: won, lost, GP, season_win_pct, playoff flags
-✓ Excluded: homeW, homeL, awayW, awayL, confW, confL
-✓ Excluded: po_W, po_L, po_win_pct (playoff outcomes)
-✓ Temporal features use ONLY past data (shift before rolling)
-✓ TimeSeriesSplit CV for hyperparameter tuning
-✓ Pairwise learning captures relative team strength
-✓ Test set touched only once (no tuning on test)
-✓ Conference-aware ranking (within East/West)
-
-GENERALIZATION DIAGNOSTIC:
---------------------------------------------------------------------------------
-Train MAE:  0.0870
-Test MAE:   0.2222
-CV Score:   0.0000 (ROC-AUC on pairwise task)
-
-✓ Good generalization: Train and Test MAE are close.
-
-================================================================================
-END OF REPORT
-================================================================================
+Top-K Accuracy:
+  Top- 1: 100.00%
+  Top- 2: 100.00%
+  Top- 3: 100.00%
+  Top- 4: 50.00%
+  Top- 5: 50.00%
+  Top- 6: 100.00%
+  Top- 7: 50.00%
+  Top- 8: 0.00%
+  Top- 9: 0.00%
+  Top-10: 0.00%

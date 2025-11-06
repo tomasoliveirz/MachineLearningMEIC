@@ -1,135 +1,19 @@
-================================================================================
-TEAM RANKING MODEL - UNIFIED & ROBUST IMPLEMENTATION
-================================================================================
+GENERATED: 2025-11-06 11:46:12 UTC
+TRAIN_SEASONS: 1-9
+TEST_SEASONS: 10+
 
-CONFIGURATION
---------------------------------------------------------------------------------
-Model: GradientBoostingRegressor
-Train seasons: 1-8
-Test seasons: 9+
-Random state: 42
-Features: 34
+MAE_rank: 0.3077
+Mean_Spearman: 0.9464
+n_groups: 2
 
-Hyperparameters (GradientBoosting - STRONG regularization):
-  - n_estimators: 200 (reduced from 400)
-  - learning_rate: 0.01 (very slow learning)
-  - max_depth: 3 (shallow trees)
-  - subsample: 0.6 (60% per tree, more stochastic)
-  - min_samples_leaf: 5 (increased from 2)
-
-================================================================================
-WALK-FORWARD CROSS-VALIDATION (internal, anti-overfitting)
---------------------------------------------------------------------------------
-Number of folds: 6
-MAE rank:        0.454
-Mean Spearman:   0.908
-Top-1 accuracy:  75.00%
-Top-2 accuracy:  91.67%
-
-================================================================================
-TRAIN METRICS (full, seasons 1-8)
---------------------------------------------------------------------------------
-MAE rank:        0.052
-Mean Spearman:   0.994
-Top-1 accuracy:  100.00%
-Top-2 accuracy:  100.00%
-Number of groups: 16
-
-================================================================================
-TEST METRICS (holdout, seasons 9+)
---------------------------------------------------------------------------------
-MAE rank:        0.667
-Mean Spearman:   0.841
-Top-1 accuracy:  75.00%
-Top-2 accuracy:  75.00%
-Number of groups: 4
-
-================================================================================
-TOP 15 MOST IMPORTANT FEATURES
---------------------------------------------------------------------------------
- 1. pythag_win_pct                           0.377567
- 2. point_diff                               0.201969
- 3. overach_roster                           0.171484
- 4. overach_pythag                           0.044348
- 5. opp_fg_pct_norm                          0.038647
- 6. opp_fg_pct                               0.021805
- 7. team_strength                            0.014058
- 8. blk_diff                                 0.011698
- 9. ft_pct_norm                              0.010970
-10. fg_pct_norm                              0.010838
-11. off_eff                                  0.010343
-12. rs_win_pct_expected_roster               0.009685
-13. prev_win_pct_1                           0.009426
-14. reb_diff                                 0.009197
-15. fg_pct                                   0.008454
-
-================================================================================
-INTERPRETATION
---------------------------------------------------------------------------------
-On average, the model's predictions are off by 0.67 positions
-in the test set (seasons 9+).
-
-The top features validate domain knowledge:
-- pythag_win_pct: Bill James Pythagorean formula (points scored/allowed)
-- point_diff: Simple but powerful predictor of team quality
-- overach_roster: Teams that exceed roster expectations
-
-The predicted rank serves as a baseline for team strength, used in:
-- Coach of the Year (COY) analysis: coaches who exceed team strength
-- Player impact evaluation: how roster changes affect expected rank
-- Playoff predictions: conference rank is a strong playoff indicator
-
-================================================================================
-EXAMPLE PREDICTIONS - Year 9 East
---------------------------------------------------------------------------------
-tmID     Name                   Rank   Pred    Score
---------------------------------------------------------------------------------
-DET      Detroit Shock             1      1     2.08
-NYL      New York Liberty          3      2     2.97
-CON      Connecticut Sun           2      3     3.24
-IND      Indiana Fever             4      4     4.28
-CHI      Chicago Sky               5      5     5.13
-WAS      Washington Mystics        6      6     6.15
-ATL      Atlanta Dream             7      7     6.33
-
-================================================================================
-EXAMPLE PREDICTIONS - Year 9 West
---------------------------------------------------------------------------------
-tmID     Name                   Rank   Pred    Score
---------------------------------------------------------------------------------
-SAS      San Antonio Silver Stars      1      1     1.60
-SEA      Seattle Storm             2      2     1.85
-LAS      Los Angeles Sparks        3      3     2.53
-MIN      Minnesota Lynx            7      4     4.09
-HOU      Houston Comets            5      5     4.39
-SAC      Sacramento Monarchs       4      6     4.44
-PHO      Phoenix Mercury           6      7     5.05
-
-================================================================================
-ANTI-LEAKAGE & ANTI-OVERFITTING CHECKLIST
---------------------------------------------------------------------------------
-✓ Temporal split (no random shuffle)
-✓ Excluded: won, lost, GP, season_win_pct, playoff flags
-✓ Excluded: homeW, homeL, awayW, awayL, confW, confL
-✓ Excluded: po_W, po_L, po_win_pct (playoff outcomes)
-✓ REMOVED: home_win_pct, away_win_pct, home_advantage (leakage risk)
-✓ Walk-forward CV on training set (realistic evaluation)
-✓ STRONG regularization: max_depth=4, min_samples_leaf=5, max_samples=0.7
-✓ Test set touched only once (no tuning on test)
-✓ Conference-aware ranking (within East/West)
-✓ OOB score enabled (RandomForest internal validation)
-
-OVERFITTING DIAGNOSTIC:
---------------------------------------------------------------------------------
-Train MAE:  0.0522
-CV MAE:     0.4544
-Test MAE:   0.6667
-
-⚠️  WARNING: Train MAE < 0.1 indicates overfitting!
-   → The model has memorized the training data.
-   → Trust CV and Test metrics instead.
-   → Consider further regularization if CV >> Test.
-
-================================================================================
-END OF REPORT
-================================================================================
+Top-K Accuracy:
+  Top- 1: 100.00%
+  Top- 2: 100.00%
+  Top- 3: 100.00%
+  Top- 4: 50.00%
+  Top- 5: 50.00%
+  Top- 6: 100.00%
+  Top- 7: 50.00%
+  Top- 8: 0.00%
+  Top- 9: 0.00%
+  Top-10: 0.00%

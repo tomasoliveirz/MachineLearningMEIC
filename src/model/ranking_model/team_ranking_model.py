@@ -1,41 +1,16 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Team Ranking Model - Enhanced with Temporal Features, Pairwise Learning & Hyperparameter Optimization
-======================================================================================================
-This is the ENHANCED implementation for team ranking prediction.
-
-New Features:
-1. Temporal features: rolling averages and trends (3 and 5 year windows)
-2. Pairwise learning: RankNet-style pairwise comparison approach
-3. Hyperparameter optimization: RandomizedSearchCV with TimeSeriesSplit
-
-Key features:
-- Temporal split (train: seasons 1-8, test: 9-10)
-- TimeSeriesSplit cross-validation for hyperparameter tuning
-- Pairwise training for learning-to-rank
-- Zero data leakage (rolling features use only past data)
-- Conference-aware ranking (within East/West)
-- Comprehensive reporting
-
-Training: Seasons 1-8 (with internal TimeSeriesSplit CV)
-Testing: Seasons 9-10 (holdout, touched only once)
-
-Usage:
-    python team_ranking_model.py                    # Run with default settings
-    python team_ranking_model.py --max-train-year 7 # Custom train/test split
-"""
-
 from pathlib import Path
-from typing import Tuple, Dict, List, Callable
+from typing import Tuple, Dict
+from datetime import datetime
+import warnings
+
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import mean_absolute_error
-from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from scipy.stats import spearmanr
-import warnings
+
+from sklearn.ensemble import GradientBoostingClassifier
+
+from sklearn.metrics import mean_absolute_error
+
 warnings.filterwarnings('ignore')
 
 # Paths
@@ -405,60 +380,10 @@ def create_pairwise_model() -> GradientBoostingClassifier:
     )
 
 
-def optimize_hyperparameters(
-    X_train: pd.DataFrame,
-    y_train: np.ndarray,
-    n_splits: int = 5,
-    n_iter: int = 20
-) -> GradientBoostingClassifier:
-    """
-    Optimize hyperparameters using RandomizedSearchCV with TimeSeriesSplit.
-    
-    Args:
-        X_train: Training features
-        y_train: Training labels (binary for pairwise)
-        n_splits: Number of TimeSeriesSplit folds
-        n_iter: Number of random search iterations
-    
-    Returns:
-        Best model (fitted on full training data)
-    """
-    print(f"\n[TeamRanking] Optimizing hyperparameters (TimeSeriesSplit, {n_splits} folds, {n_iter} iterations)...")
-    
-    # Define parameter distributions
-    param_distributions = {
-        'learning_rate': [0.01, 0.03, 0.05, 0.1, 0.15],
-        'n_estimators': [50, 100, 150, 200, 300],
-        'max_depth': [2, 3, 4, 5],
-        'subsample': [0.6, 0.7, 0.8, 0.9, 1.0],
-        'min_samples_leaf': [2, 3, 5, 7, 10]
-    }
-    
-    # TimeSeriesSplit for temporal data
-    tscv = TimeSeriesSplit(n_splits=n_splits)
-    
-    # Base model
-    base_model = GradientBoostingClassifier(random_state=RANDOM_STATE)
-    
-    # RandomizedSearchCV
-    random_search = RandomizedSearchCV(
-        estimator=base_model,
-        param_distributions=param_distributions,
-        n_iter=n_iter,
-        cv=tscv,
-        scoring='roc_auc',  # For binary classification
-        n_jobs=-1,
-        random_state=RANDOM_STATE,
-        verbose=1
-    )
-    
-    # Fit
-    random_search.fit(X_train, y_train)
-    
-    print(f"  ✓ Best parameters: {random_search.best_params_}")
-    print(f"  ✓ Best CV score (ROC-AUC): {random_search.best_score_:.4f}")
-    
-    return random_search.best_estimator_
+# NOTE: hyperparameter optimization removed. For large training sets the
+# RandomizedSearchCV-based optimization was deemed unnecessary (expensive
+# and yields diminishing returns). We train a default model with
+# `create_pairwise_model()` instead.
 
 
 # =============================================================================
@@ -487,7 +412,7 @@ def add_predicted_rank(meta_df: pd.DataFrame, y_pred: np.ndarray) -> pd.DataFram
 # 8. EVALUATION METRICS (conference-aware)
 # =============================================================================
 
-def evaluate(df_with_ranks: pd.DataFrame, split_name: str, verbose: bool = True) -> Dict:
+def evaluate(df_with_ranks: pd.DataFrame, split_name: str) -> Dict:
     """
     Compute evaluation metrics for predicted rankings.
     
@@ -496,8 +421,6 @@ def evaluate(df_with_ranks: pd.DataFrame, split_name: str, verbose: bool = True)
     - Mean Spearman correlation per (year, confID) group
     - Top-K accuracy (K=1 to 10): % of groups where true champion in predicted top-K
     """
-    if verbose:
-        print(f"\n[TeamRanking] Evaluating {split_name} set...")
     
     # Global MAE
     mae_rank = mean_absolute_error(df_with_ranks['rank'], df_with_ranks['pred_rank'])
@@ -536,49 +459,61 @@ def evaluate(df_with_ranks: pd.DataFrame, split_name: str, verbose: bool = True)
         'mae_rank': mae_rank,
         'mean_spearman': mean_spearman,
         'n_groups': total_groups
-    }
-    
-    # Add top-K accuracies to metrics
-    for k in range(1, 11):
-        metrics[f'top{k}_accuracy'] = top_k_acc[k]
-    
-    if verbose:
-        print(f"  MAE rank: {mae_rank:.3f}")
-        print(f"  Mean Spearman: {mean_spearman:.3f}")
-        for k in range(1, 11):
-            print(f"  Top-{k} accuracy: {top_k_acc[k]:.2%} ({top_k_correct[k]}/{total_groups})")
-    
+    } 
+
     return metrics
 
 
 # =============================================================================
-# 9. SAVE OUTPUTS
+# SAVE OUTPUTS (corrigido) + RELATÓRIO CONSISTENTE LENDO O CSV (fonte da verdade)
 # =============================================================================
 
-def save_predictions(train_df: pd.DataFrame, test_df: pd.DataFrame):
+
+def save_predictions(train_df: pd.DataFrame, test_df: pd.DataFrame) -> Path:
     """
-    Save predictions to CSV: data/processed/team_ranking_predictions.csv
-    
-    Args:
-        train_df: Training predictions with columns [year, confID, tmID, name, rank, pred_rank, pred_score]
-        test_df: Test predictions (same structure)
+    Salva predictions em CSV com formato consistente e retorna o Path do arquivo.
+    Colunas garantidas: year, confID, tmID, name, rank, pred_rank, pred_score, split
     """
-    train_df['split'] = 'train'
-    test_df['split'] = 'test'
-    
-    df_all = pd.concat([train_df, test_df], ignore_index=True)
-    
-    # Select and order columns
-    out_cols = ['year', 'confID', 'tmID', 'name', 'rank', 'pred_rank', 'pred_score', 'split']
-    df_out = df_all[out_cols].copy()
-    
-    # Sort by year, conference, predicted rank
-    df_out = df_out.sort_values(['year', 'confID', 'pred_rank']).reset_index(drop=True)
-    
+    print("\n[TeamRanking] Saving predictions to CSV...")
+
+    # copy pra não poluir objetos externos
+    train = train_df.copy()
+    test = test_df.copy()
+
+    train["split"] = "train"
+    test["split"] = "test"
+
+    df_all = pd.concat([train, test], ignore_index=True)
+
+    # colunas obrigatórias na ordem desejada
+    out_cols = ["year", "confID", "tmID", "name", "rank", "pred_rank", "pred_score", "split"]
+    for c in out_cols:
+        if c not in df_all.columns:
+            df_all[c] = np.nan
+
+    # normaliza tipos: ranks inteiros se possível, scores floats
+    def safe_to_int(series):
+        try:
+            return series.astype(float).round().astype(int)
+        except Exception:
+            # se falhar, retorna NaNs
+            return pd.Series([np.nan] * len(series))
+
+    df_all["rank"] = safe_to_int(df_all["rank"])
+    # pred_rank pode já existir; mantenha como inteiro quando possível
+    df_all["pred_rank"] = safe_to_int(df_all["pred_rank"])
+    df_all["pred_score"] = pd.to_numeric(df_all["pred_score"], errors="coerce")
+
+    # ordenar de forma estável: year, confID, pred_rank (nulos no final)
+    df_all = df_all[out_cols].sort_values(
+        ["year", "confID", "pred_rank"], na_position="last", ignore_index=True
+    )
+
     out_path = PROC_DIR / "team_ranking_predictions.csv"
-    df_out.to_csv(out_path, index=False)
-    
-    print(f"\n[TeamRanking] Saved predictions to {out_path}")
+    df_all.to_csv(out_path, index=False, float_format="%.6f", encoding="utf-8")
+
+    print(f"  ✓ Saved predictions to {out_path}")
+    return out_path
 
 
 def save_report(
@@ -588,144 +523,144 @@ def save_report(
     train_metrics: Dict,
     test_metrics: Dict,
     test_df: pd.DataFrame,
-    report_name: str = "team_ranking_report_enhanced.txt"
-):
+    report_name: str = "team_ranking_report_metrics.txt"
+) -> Path:
     """
-    Save comprehensive evaluation report.
+    Gera relatório com métricas calculadas a partir do CSV salvo (team_ranking_predictions.csv).
+    
+    Top-K Accuracy: Para cada conferência de teste, verifica se o time verdadeiro de rank K
+    está previsto no rank K. A porcentagem final é a média sobre todas as conferências de teste.
     
     Args:
-        max_train_year: Last training season
-        best_params: Best hyperparameters from optimization
-        best_cv_score: Best CV score from hyperparameter search
-        train_metrics: Full training set metrics
-        test_metrics: Test set (holdout) metrics
-        test_df: Test DataFrame with predictions for examples
-        report_name: Output filename
+        max_train_year: Último ano de treino (ex: 8)
+        best_params: Melhores hiperparâmetros encontrados
+        best_cv_score: Melhor score de CV
+        train_metrics: Métricas de treino (não usado)
+        test_metrics: Métricas de teste (não usado)
+        test_df: DataFrame de teste (não usado - lê do CSV)
+        report_name: Nome do arquivo de relatório
+        
+    Returns:
+        Path do arquivo de relatório gerado
     """
     report_path = REPORTS_DIR / report_name
+    csv_path = PROC_DIR / "team_ranking_predictions.csv"
+
+    # Ler CSV salvo (fonte da verdade)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"CSV não encontrado: {csv_path}")
     
-    with open(report_path, 'w', encoding='utf-8') as f:
-        # Header
-        f.write("=" * 80 + "\n")
-        f.write("TEAM RANKING MODEL - ENHANCED WITH TEMPORAL FEATURES & PAIRWISE LEARNING\n")
-        f.write("=" * 80 + "\n\n")
-        
-        # Configuration
-        f.write("CONFIGURATION\n")
-        f.write("-" * 80 + "\n")
-        f.write(f"Model: GradientBoostingClassifier (Pairwise Learning-to-Rank)\n")
-        f.write(f"Train seasons: 1-{max_train_year}\n")
-        f.write(f"Test seasons: {max_train_year+1}+\n")
-        f.write(f"Random state: {RANDOM_STATE}\n")
-        
-        f.write("\nEnhancements:\n")
-        f.write("  1. Temporal features: Rolling averages (MA3, MA5) and trends\n")
-        f.write("  2. Pairwise training: RankNet-style pairwise comparison\n")
-        f.write("  3. Hyperparameter optimization: RandomizedSearchCV + TimeSeriesSplit\n")
-        
-        f.write("\nBest Hyperparameters (from RandomizedSearchCV):\n")
-        for param, value in best_params.items():
-            f.write(f"  - {param}: {value}\n")
-        f.write(f"  - Best CV score (ROC-AUC): {best_cv_score:.4f}\n")
-        
-        # Train metrics (full training set)
-        f.write("\n" + "=" * 80 + "\n")
-        f.write(f"TRAIN METRICS (full, seasons 1-{max_train_year})\n")
-        f.write("-" * 80 + "\n")
-        f.write(f"MAE rank:        {train_metrics['mae_rank']:.3f}\n")
-        f.write(f"Mean Spearman:   {train_metrics['mean_spearman']:.3f}\n")
-        f.write(f"Number of groups: {train_metrics['n_groups']}\n")
-        f.write("\nTop-K Accuracies (champion in predicted top-K):\n")
-        for k in range(1, 11):
-            f.write(f"  Top-{k:2d} accuracy:  {train_metrics[f'top{k}_accuracy']:.2%}\n")
-        
-        # Test metrics (holdout)
-        f.write("\n" + "=" * 80 + "\n")
-        f.write(f"TEST METRICS (holdout, seasons {max_train_year+1}+)\n")
-        f.write("-" * 80 + "\n")
-        f.write(f"MAE rank:        {test_metrics['mae_rank']:.3f}\n")
-        f.write(f"Mean Spearman:   {test_metrics['mean_spearman']:.3f}\n")
-        f.write(f"Number of groups: {test_metrics['n_groups']}\n")
-        f.write("\nTop-K Accuracies (champion in predicted top-K):\n")
-        for k in range(1, 11):
-            f.write(f"  Top-{k:2d} accuracy:  {test_metrics[f'top{k}_accuracy']:.2%}\n")
-        
-        # Interpretation
-        f.write("\n" + "=" * 80 + "\n")
-        f.write("INTERPRETATION\n")
-        f.write("-" * 80 + "\n")
-        f.write(f"On average, the model's predictions are off by {test_metrics['mae_rank']:.2f} positions\n")
-        f.write(f"in the test set (seasons {max_train_year+1}+).\n\n")
-        
-        f.write("The pairwise approach learns relative team comparisons:\n")
-        f.write("- Teams are compared pairwise (A vs B)\n")
-        f.write("- Model learns which features predict A > B\n")
-        f.write("- Final ranking aggregates all pairwise predictions\n\n")
-        
-        f.write("Temporal features capture team momentum:\n")
-        f.write("- Rolling averages: Recent performance trends\n")
-        f.write("- Trend slopes: Improving/declining teams\n")
-        f.write("- All features use ONLY past data (no leakage)\n")
-        
-        # Example predictions
-        f.write("\n" + "=" * 80 + "\n")
-        f.write(f"EXAMPLE PREDICTIONS - Year {max_train_year+1} East\n")
-        f.write("-" * 80 + "\n")
-        
-        example_ea = test_df[(test_df['year'] == max_train_year+1) & (test_df['confID'] == 'EA')]
-        if len(example_ea) > 0:
-            example_ea = example_ea.sort_values('pred_rank')
-            f.write(f"{'tmID':<8} {'Name':<20} {'Rank':>6} {'Pred':>6} {'Score':>8}\n")
-            f.write("-" * 80 + "\n")
-            for _, row in example_ea.iterrows():
-                f.write(f"{row['tmID']:<8} {row['name']:<20} {int(row['rank']):>6} "
-                       f"{int(row['pred_rank']):>6} {row['pred_score']:>8.2f}\n")
-        
-        f.write("\n" + "=" * 80 + "\n")
-        f.write(f"EXAMPLE PREDICTIONS - Year {max_train_year+1} West\n")
-        f.write("-" * 80 + "\n")
-        
-        example_we = test_df[(test_df['year'] == max_train_year+1) & (test_df['confID'] == 'WE')]
-        if len(example_we) > 0:
-            example_we = example_we.sort_values('pred_rank')
-            f.write(f"{'tmID':<8} {'Name':<20} {'Rank':>6} {'Pred':>6} {'Score':>8}\n")
-            f.write("-" * 80 + "\n")
-            for _, row in example_we.iterrows():
-                f.write(f"{row['tmID']:<8} {row['name']:<20} {int(row['rank']):>6} "
-                       f"{int(row['pred_rank']):>6} {row['pred_score']:>8.2f}\n")
-        
-        # Anti-leakage checklist
-        f.write("\n" + "=" * 80 + "\n")
-        f.write("ANTI-LEAKAGE & GENERALIZATION CHECKLIST\n")
-        f.write("-" * 80 + "\n")
-        f.write("✓ Temporal split (no random shuffle)\n")
-        f.write("✓ Excluded: won, lost, GP, season_win_pct, playoff flags\n")
-        f.write("✓ Excluded: homeW, homeL, awayW, awayL, confW, confL\n")
-        f.write("✓ Excluded: po_W, po_L, po_win_pct (playoff outcomes)\n")
-        f.write("✓ Temporal features use ONLY past data (shift before rolling)\n")
-        f.write("✓ TimeSeriesSplit CV for hyperparameter tuning\n")
-        f.write("✓ Pairwise learning captures relative team strength\n")
-        f.write("✓ Test set touched only once (no tuning on test)\n")
-        f.write("✓ Conference-aware ranking (within East/West)\n")
-        f.write("\n")
-        f.write("GENERALIZATION DIAGNOSTIC:\n")
-        f.write("-" * 80 + "\n")
-        f.write(f"Train MAE:  {train_metrics['mae_rank']:.4f}\n")
-        f.write(f"Test MAE:   {test_metrics['mae_rank']:.4f}\n")
-        f.write(f"CV Score:   {best_cv_score:.4f} (ROC-AUC on pairwise task)\n")
-        f.write("\n")
-        gap = abs(train_metrics['mae_rank'] - test_metrics['mae_rank'])
-        if gap < 0.3:
-            f.write("✓ Good generalization: Train and Test MAE are close.\n")
-        else:
-            f.write("⚠️  Train and Test MAE differ.\n")
-            f.write("   → Monitor for overfitting or distribution shift.\n")
-        
-        f.write("\n" + "=" * 80 + "\n")
-        f.write("END OF REPORT\n")
-        f.write("=" * 80 + "\n")
+    df_all = pd.read_csv(csv_path, encoding="utf-8")
     
-    print(f"[TeamRanking] Saved report to {report_path}")
+    # Validar colunas necessárias
+    required_cols = ["year", "confID", "tmID", "name", "rank", "pred_rank", "split"]
+    for col in required_cols:
+        if col not in df_all.columns:
+            raise ValueError(f"Coluna '{col}' não encontrada no CSV")
+
+    # Filtrar apenas dados de teste (split == 'test' e year > max_train_year)
+    df_test = df_all.loc[
+        (df_all["split"] == "test") &
+        (df_all["year"] > max_train_year)
+    ].copy()
+
+    if df_test.empty:
+        raise ValueError(f"Nenhum dado de teste encontrado para years > {max_train_year}")
+
+    # Normalizar tipos
+    df_test["rank"] = pd.to_numeric(df_test["rank"], errors="coerce").astype('Int64')
+    df_test["pred_rank"] = pd.to_numeric(df_test["pred_rank"], errors="coerce").astype('Int64')
+
+    # ============================================================================
+    # CALCULAR MÉTRICAS
+    # ============================================================================
+    
+    # MAE (Mean Absolute Error)
+    valid_mask = df_test["rank"].notna() & df_test["pred_rank"].notna()
+    if valid_mask.sum() > 0:
+        mae_rank = mean_absolute_error(
+            df_test.loc[valid_mask, "rank"].astype(int),
+            df_test.loc[valid_mask, "pred_rank"].astype(int)
+        )
+    else:
+        mae_rank = float("nan")
+
+    # Mean Spearman Correlation (por grupo year-confID)
+    spearman_corrs = []
+    for (year, conf), g in df_test.groupby(["year", "confID"]):
+        g = g.dropna(subset=["rank", "pred_rank"])
+        if len(g) <= 1:
+            continue
+        try:
+            corr, _ = spearmanr(g["rank"].astype(int), g["pred_rank"].astype(int))
+            if not np.isnan(corr):
+                spearman_corrs.append(corr)
+        except Exception:
+            continue
+    
+    mean_spearman = float(np.mean(spearman_corrs)) if spearman_corrs else float("nan")
+
+    # Top-K Accuracy
+    # Para cada K de 1 a 10, calculamos a porcentagem de acertos considerando:
+    # - Acerto: O time com rank verdadeiro K está previsto no rank K
+    # - Calculado por conferência (year, confID)
+    
+    total_groups = 0
+    top_k_correct = {k: 0 for k in range(1, 11)}
+    
+    for (year, conf), g in df_test.groupby(["year", "confID"]):
+        # Limpar dados inválidos
+        g = g.dropna(subset=["rank", "pred_rank"])
+        if len(g) == 0:
+            continue
+        
+        total_groups += 1
+        
+        # Converter ranks para inteiros
+        g = g.copy()
+        g["rank"] = g["rank"].astype(int)
+        g["pred_rank"] = g["pred_rank"].astype(int)
+        
+        # Para cada K de 1 a 10
+        for k in range(1, 11):
+            # Encontrar times verdadeiros nas top-K posições (ranks 1 a K)
+            true_top_k = set(g.loc[g["rank"] <= k, "tmID"].astype(str))
+            
+            # Encontrar times previstos nas top-K posições (pred_ranks 1 a K)
+            pred_top_k = set(g.loc[g["pred_rank"] <= k, "tmID"].astype(str))
+            
+            # Calcular interseção (acertos)
+            correct_in_top_k = len(true_top_k & pred_top_k)
+            
+            # Se todos os K times verdadeiros estão nos K previstos, é um acerto completo
+            if correct_in_top_k == k:
+                top_k_correct[k] += 1
+
+    # Calcular porcentagens
+    if total_groups == 0:
+        top_k_acc = {k: 0.0 for k in range(1, 11)}
+    else:
+        top_k_acc = {k: top_k_correct[k] / total_groups for k in range(1, 11)}
+
+    # ============================================================================
+    # SALVAR RELATÓRIO
+    # ============================================================================
+    
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write(f"GENERATED: {now} UTC\n")
+        f.write(f"TRAIN_SEASONS: 1-{max_train_year}\n")
+        f.write(f"TEST_SEASONS: {max_train_year + 1}+\n\n")
+        f.write(f"MAE_rank: {mae_rank:.4f}\n")
+        f.write(f"Mean_Spearman: {mean_spearman:.4f}\n")
+        f.write(f"n_groups: {total_groups}\n\n")
+        f.write("Top-K Accuracy:\n")
+        for k in range(1, 11):
+            f.write(f"  Top-{k:2d}: {top_k_acc[k]:.2%}\n")
+
+    print(f"[TeamRanking] Report saved to {report_path}")
+    return report_path
 
 
 # =============================================================================
@@ -734,24 +669,18 @@ def save_report(
 
 def run_team_ranking_model(
     max_train_year: int = 8,
-    optimize_hyperparams: bool = True,
-    n_iter: int = 20,
     report_name: str = "team_ranking_report_enhanced.txt"
 ) -> None:
     """
     Main pipeline: Enhanced team ranking model with temporal features and pairwise learning.
+    This pipeline always trains the default pairwise model (no hyperparameter search).
     
     Args:
         max_train_year: Last season for training (default: 8)
-        optimize_hyperparams: Whether to optimize hyperparameters (default: True)
-        n_iter: Number of RandomizedSearch iterations (default: 20)
         report_name: Output report filename
     """
     print("\n" + "=" * 80)
-    print("TEAM RANKING MODEL - ENHANCED VERSION")
-    print("=" * 80)
-    print(f"Approach: Pairwise Learning-to-Rank with Temporal Features")
-    print(f"Train: seasons 1-{max_train_year}, Test: {max_train_year+1}+")
+    print("TEAM RANKING MODEL")
     print("=" * 80)
     
     # 1. Load and merge data
@@ -764,36 +693,20 @@ def run_team_ranking_model(
     train_raw, test_raw = split_train_test(df_all, max_train_year)
     
     # 4. Build features
-    print("\n[TeamRanking] Building features...")
     X_train, y_train, meta_train = build_feature_matrix(train_raw)
     X_test, y_test, meta_test = build_feature_matrix(test_raw)
-    print(f"  ✓ Train: {X_train.shape[1]} features, {len(X_train)} samples")
-    print(f"  ✓ Test:  {X_test.shape[1]} features, {len(X_test)} samples")
     
     # 5. Generate pairwise training data
     X_pairs_train, y_pairs_train = generate_pairwise_data(train_raw, X_train, y_train)
     
-    # 6. Optimize hyperparameters or use default model
-    if optimize_hyperparams:
-        final_model = optimize_hyperparameters(
-            X_pairs_train, 
-            y_pairs_train,
-            n_splits=5,
-            n_iter=n_iter
-        )
-        best_params = final_model.get_params()
-        # Extract CV score from RandomizedSearchCV (stored during optimization)
-        best_cv_score = 0.75  # Placeholder - actual score printed during optimization
-    else:
-        print("\n[TeamRanking] Training pairwise model with default hyperparameters...")
-        final_model = create_pairwise_model()
-        final_model.fit(X_pairs_train, y_pairs_train)
-        best_params = final_model.get_params()
-        best_cv_score = 0.0
-        print("  ✓ Model trained")
+    # 6. Train final model (default pairwise model)
+    final_model = create_pairwise_model()
+    final_model.fit(X_pairs_train, y_pairs_train)
+    best_params = final_model.get_params()
+    best_cv_score = 0.0
+    print("  ✓ Model trained")
     
     # 7. Predict using pairwise model
-    print("\n[TeamRanking] Generating predictions (pairwise scoring)...")
     y_pred_train = predict_ranks_pairwise(final_model, train_raw, X_train)
     y_pred_test = predict_ranks_pairwise(final_model, test_raw, X_test)
     print("  ✓ Predictions generated")
@@ -813,15 +726,6 @@ def run_team_ranking_model(
         train_metrics, test_metrics,
         test_with_ranks, report_name
     )
-    
-    print("\n" + "=" * 80)
-    print("✓ ENHANCED PIPELINE COMPLETE")
-    print("=" * 80)
-    print("\nKey Improvements:")
-    print("  1. ✓ Temporal features (rolling averages & trends)")
-    print("  2. ✓ Pairwise learning-to-rank approach")
-    print("  3. ✓ Hyperparameter optimization with TimeSeriesSplit")
-    print("=" * 80 + "\n")
 
 
 # =============================================================================
@@ -829,40 +733,12 @@ def run_team_ranking_model(
 # =============================================================================
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(
-        description="Team Ranking Model - Enhanced with Temporal Features & Pairwise Learning"
-    )
-    parser.add_argument(
-        '--max-train-year',
-        type=int,
-        default=8,
-        help="Last season for training (default: 8)"
-    )
-    parser.add_argument(
-        '--no-optimize',
-        action='store_true',
-        help="Skip hyperparameter optimization (use default params)"
-    )
-    parser.add_argument(
-        '--n-iter',
-        type=int,
-        default=20,
-        help="Number of RandomizedSearch iterations (default: 20)"
-    )
-    parser.add_argument(
-        '--report-name',
-        type=str,
-        default='team_ranking_report_enhanced.txt',
-        help="Output report filename"
-    )
-    
-    args = parser.parse_args()
-    
+    # ======== Configurations ========
+    MAX_TRAIN_YEAR = 9                 # Last
+    REPORT_NAME = "team_ranking_report.txt"  # Nome do arquivo de saída
+    # =====================================
+
     run_team_ranking_model(
-        max_train_year=args.max_train_year,
-        optimize_hyperparams=not args.no_optimize,
-        n_iter=args.n_iter,
-        report_name=args.report_name
+        max_train_year=MAX_TRAIN_YEAR,
+        report_name=REPORT_NAME
     )
