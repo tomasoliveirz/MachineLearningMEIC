@@ -5,10 +5,9 @@ import warnings
 import pandas as pd
 import numpy as np
 from scipy.stats import spearmanr
-
 from sklearn.ensemble import GradientBoostingClassifier
-
 from sklearn.metrics import mean_absolute_error
+from model_grafics import generate_all_graphics
 
 warnings.filterwarnings('ignore')
 
@@ -18,8 +17,7 @@ PROC_DIR = ROOT / "data" / "processed"
 REPORTS_DIR = ROOT / "reports" / "models"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Random state for reproducibility
-RANDOM_STATE = 42
+
 
 
 # =============================================================================
@@ -717,6 +715,7 @@ def save_report(
 def run_team_ranking_model(
     max_train_year: int = 8,
     report_name: str = "team_ranking_report_enhanced.txt",
+    generate_graphics: bool = True
 ) -> None:
     """Main predictive pipeline using temporal features and pairwise ranking."""
     print("\n" + "=" * 80)
@@ -806,19 +805,26 @@ def run_team_ranking_model(
         test_with_ranks, report_name,
         strict_predictive=True
     )
+    
+    # 11. Generate graphics
+    print("\n[TeamRanking] Generating visualizations...")
+    if generate_graphics:
+        generate_all_graphics()
 
 
 # =============================================================================
-# 11. CLI ENTRY POINT
+# 12. CLI ENTRY POINT
 # =============================================================================
 
 if __name__ == "__main__":
     # ======== Configurations ========
-    MAX_TRAIN_YEAR = 9                 # Last year for training
+    MAX_TRAIN_YEAR = 8                 # Last year for training
     REPORT_NAME = "team_ranking_report.txt"  # Output report filename
+    GRAFICS = True                     # Whether to generate graphics
     
     # This script runs the predictive (pre-season, no-leakage) model only
     run_team_ranking_model(
         max_train_year=MAX_TRAIN_YEAR,
-        report_name=REPORT_NAME
+        report_name=REPORT_NAME,
+        generate_graphics=GRAFICS
     )
