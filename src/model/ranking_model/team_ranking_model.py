@@ -687,7 +687,7 @@ def run_team_ranking_model(
 
 if __name__ == "__main__":
     # ======== Configurations ========
-    MAX_TRAIN_YEAR = 8                 # Last year for training
+    MAX_TRAIN_YEAR = 9                 # Last year for training
     REPORT_NAME = "team_ranking_report.txt"  # Output report filename
     
     # This script runs the predictive (pre-season, no-leakage) model only
