@@ -75,6 +75,89 @@ def load_and_merge() -> pd.DataFrame:
 # 2. TEMPORAL FEATURES (Rolling Averages & Trends)
 # =============================================================================
 
+def add_coach_career_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute coach overachievement RESULTS (in-memory) and then create 
+    predictive features (rolling averages with shift(1)).
+    
+    This function:
+    1. Calculates overachievement for each season (RESULT, not usable)
+    2. Creates lagged rolling averages (PREDICTIVE features)
+    """
+    print("[TeamRanking] Adding coach career features (predictive, no leakage)...")
+    
+    # Check if coach data exists
+    if 'coachID' not in df.columns:
+        print("  ⚠ No coach data found, skipping coach features")
+        return df
+    
+    df = df.sort_values(['coachID', 'year']).copy()
+    
+    # --- STEP 1: Calculate RESULTS for the season (in-memory) ---
+    # These columns CANNOT be used directly in the model
+    
+    # Find coach win% column
+    rs_col = None
+    for col in ['rs_win_pct_coach', 'coach_rs_win_pct']:
+        if col in df.columns:
+            rs_col = col
+            break
+    
+    if rs_col is None:
+        print("  ⚠ Coach win% column not found, skipping coach features")
+        return df
+    
+    # Calculate overachievement RESULTS (current season)
+    if 'pythag_win_pct' in df.columns:
+        df['coach_overach_pythag_RESULT'] = df[rs_col] - df['pythag_win_pct']
+        df['coach_overach_pythag_RESULT'] = df['coach_overach_pythag_RESULT'].fillna(0.0)
+    
+    if 'rs_win_pct_expected_roster' in df.columns:
+        df['coach_overach_roster_RESULT'] = df[rs_col] - df['rs_win_pct_expected_roster']
+        df['coach_overach_roster_RESULT'] = df['coach_overach_roster_RESULT'].fillna(0.0)
+    
+    # --- STEP 2: Create PREDICTIVE FEATURES (with shift(1)) ---
+    # The model will ONLY use these _ma3 columns (3-year rolling averages)
+    
+    # Career overachievement vs Pythagorean
+    if 'coach_overach_pythag_RESULT' in df.columns:
+        df['coach_career_overach_pythag_ma3'] = df.groupby('coachID')['coach_overach_pythag_RESULT'].transform(
+            lambda x: x.shift(1).rolling(window=3, min_periods=1).mean()
+        ).fillna(0.0)
+    
+    # Career overachievement vs Roster
+    if 'coach_overach_roster_RESULT' in df.columns:
+        df['coach_career_overach_roster_ma3'] = df.groupby('coachID')['coach_overach_roster_RESULT'].transform(
+            lambda x: x.shift(1).rolling(window=3, min_periods=1).mean()
+        ).fillna(0.0)
+    
+    # Career win% (smoothed)
+    df['coach_career_rs_win_pct_ma3'] = df.groupby('coachID')[rs_col].transform(
+        lambda x: x.shift(1).rolling(window=3, min_periods=1).mean()
+    ).fillna(0.0)
+    
+    # Coach tenure (years with same team)
+    if 'team_id' in df.columns or 'tmID' in df.columns:
+        team_col = 'team_id' if 'team_id' in df.columns else 'tmID'
+        df = df.sort_values([team_col, 'coachID', 'year'])
+        df['coach_tenure'] = df.groupby([team_col, 'coachID']).cumcount() + 1
+        df['coach_tenure_prev'] = df.groupby([team_col, 'coachID'])['coach_tenure'].shift(1).fillna(0).astype(int)
+    else:
+        df['coach_tenure_prev'] = 0
+    
+    # Count new predictive features
+    coach_features = [
+        'coach_career_overach_pythag_ma3',
+        'coach_career_overach_roster_ma3', 
+        'coach_career_rs_win_pct_ma3',
+        'coach_tenure_prev'
+    ]
+    existing_features = [f for f in coach_features if f in df.columns]
+    
+    print(f"  ✓ Added {len(existing_features)} coach career features")
+    
+    return df
+
 def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add temporal rolling and trend features using past seasons (no leakage)."""
     print("[TeamRanking] Adding temporal features (rolling averages & trends)...")
@@ -137,7 +220,6 @@ def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
-
 # =============================================================================
 # 3. TEMPORAL SPLIT
 # =============================================================================
@@ -181,6 +263,13 @@ def build_feature_matrix(
         
         # Structural context (not tied to game results)
         'franchise_changed',
+        
+        # Coach career features (predictive, lagged)
+        'coach_career_overach_pythag_ma3',
+        'coach_career_overach_roster_ma3',
+        'coach_career_rs_win_pct_ma3',
+        'coach_tenure_prev',
+        'is_first_year_with_team',
     ]
     # Use predictive feature set only (no leakage)
     feature_cols_numeric = feature_cols_numeric_predictive
@@ -210,7 +299,7 @@ def build_feature_matrix(
     forbidden_substrings = [
         'won', 'lost', 'GP', 'homeW', 'homeL', 'awayW', 'awayL',
         'confW', 'confL', 'rs_win_pct', 'pythag_win_pct', 'overach',
-        'po_W', 'po_L', 'po_win_pct'
+        'po_W', 'po_L', 'po_win_pct', '_RESULT'  # Added _RESULT to catch in-memory results
     ]
 
     # Allow temporal-derived features that end with safe suffixes (they use shift(1))
@@ -641,8 +730,46 @@ def run_team_ranking_model(
     # 2. Add temporal features
     df_all = add_temporal_features(df_all)
     
+    # 2B. Add coach career features 
+    coach_perf_path = PROC_DIR / "coach_season_facts_performance.csv"
+    if coach_perf_path.exists():
+        print("\n[TeamRanking] Loading coach performance data...")
+        df_coaches = pd.read_csv(coach_perf_path)
+        
+        # AGGREGATE multiple stints per team-season
+        # When a team has multiple coaches in one season, we need to combine them
+        # Strategy: Use weighted average by games played
+        print("  ℹ Aggregating multiple coach stints per team-season...")
+        
+        # Calculate weights (games per stint)
+        df_coaches['gp'] = df_coaches['won'] + df_coaches['lost']
+        
+        # Group by team_id + year and aggregate
+        coach_agg = df_coaches.groupby(['team_id', 'year']).agg({
+            'coachID': 'first',  # Use first coach (arbitrary choice, could use last)
+            'rs_win_pct_coach': lambda x: np.average(x, weights=df_coaches.loc[x.index, 'gp']),
+            'eb_rs_win_pct': lambda x: np.average(x, weights=df_coaches.loc[x.index, 'gp']),
+            'is_first_year_with_team': 'max',  # 1 if any coach is in first year
+            'gp': 'sum'  # Total games
+        }).reset_index()
+        
+        # Merge coach data (now unique per team-year)
+        df_all = df_all.merge(
+            coach_agg[['team_id', 'year', 'coachID', 'rs_win_pct_coach', 
+                       'eb_rs_win_pct', 'is_first_year_with_team']],
+            on=['team_id', 'year'],
+            how='left'
+        )
+        print(f"  ✓ Merged coach data: {df_all['coachID'].notna().sum()} teams with coaches")
+        
+        # Add coach career features
+        df_all = add_coach_career_features(df_all)
+    else:
+        print("\n⚠ Coach performance data not found, skipping coach features")
+    
     # 3. Temporal split
     train_raw, test_raw = split_train_test(df_all, max_train_year)
+  
     
     # 4. Build features
     X_train, y_train, meta_train = build_feature_matrix(train_raw)

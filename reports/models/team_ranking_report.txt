@@ -1,22 +1,22 @@
-GENERATED: 2025-11-11 14:58:49 UTC
+GENERATED: 2025-11-11 15:26:12 UTC
 MODE: PREDICTIVE
 TRAIN_SEASONS: 1-9
 TEST_SEASONS: 10+
 
-MAE_rank: 2.0000
-Mean_Spearman: 0.1143
+MAE_rank: 1.5385
+Mean_Spearman: 0.4179
 n_groups: 2
 
 Top-K Accuracy:
-  Top- 1: 0.00%
-  Top- 2: 0.00%
-  Top- 3: 0.00%
-  Top- 4: 0.00%
+  Top- 1: 50.00%
+  Top- 2: 50.00%
+  Top- 3: 50.00%
+  Top- 4: 50.00%
   Top- 5: 0.00%
-  Top- 6: 100.00%
+  Top- 6: 50.00%
   Top- 7: 50.00%
   Top- 8: 0.00%
   Top- 9: 0.00%
   Top-10: 0.00%
 
-Overall_accuracy: 15.38% (2/13)
+Overall_accuracy: 30.77% (4/13)
