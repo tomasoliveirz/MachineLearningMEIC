@@ -89,11 +89,11 @@ Overall Accuracy: 18.52%
 - ❌ `franchise_changed` (baixa importância)
 - ❌ `coach_career_overach_*` (derivadas, redundância)
 - ❌ `is_first_year_with_team` (baixa importância)
+- ❌ `team_strength` (subjetivo, ruidoso)
 
 **Mantidas (13 features + 2 conf):**
 - ✅ `prev_win_pct_3`, `prev_win_pct_5` (médio/longo prazo)
 - ✅ `prev_point_diff_5` (estável)
-- ✅ `team_strength` (objetiva)
 - ✅ MA5 e trend5 (longo prazo, estáveis)
 - ✅ `coach_career_rs_win_pct_ma3` (carreira)
 - ✅ `coach_tenure_prev` (experiência)

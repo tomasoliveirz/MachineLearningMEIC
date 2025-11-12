@@ -310,9 +310,6 @@ def build_feature_matrix(
         'prev_win_pct_3', 'prev_win_pct_5',
         'prev_point_diff_5',
         
-        # Roster quality (objective pre-season metric)
-        'team_strength',
-        
         # Key rolling averages (removed short-term MA3 to reduce noise)
         'point_diff_ma5', 'point_diff_trend5',
         'off_eff_ma5', 'def_eff_ma5',
