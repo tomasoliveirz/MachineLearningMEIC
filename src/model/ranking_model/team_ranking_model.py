@@ -17,8 +17,8 @@ PROC_DIR = ROOT / "data" / "processed"
 REPORTS_DIR = ROOT / "reports" / "models"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-
-
+# Random seed for reproducibility
+RANDOM_STATE = 42
 
 # =============================================================================
 # 1. DATA LOADING AND VALIDATION
@@ -67,7 +67,6 @@ def load_and_merge() -> pd.DataFrame:
     print(f"  ✓ After removing missing rank/confID: {len(df_all)} rows")
     
     return df_all
-
 
 # =============================================================================
 # 2. TEMPORAL FEATURES (Rolling Averages & Trends)
@@ -219,22 +218,59 @@ def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 # =============================================================================
-# 3. TEMPORAL SPLIT
+# 3. TEMPORAL SPLIT (Train/Validation/Test) AND WALK-FORWARD VALIDATION
 # =============================================================================
 
-def split_train_test(
+def split_train_val_test(
     df_all: pd.DataFrame, 
-    max_train_year: int = 8
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Temporal split by year (no shuffle)."""
-    train_df = df_all[df_all['year'] <= max_train_year].copy()
+    max_train_year: int = 8,
+    val_years: int = 2
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Temporal split with validation set (no shuffle).
+    
+    Args:
+        df_all: Full dataset
+        max_train_year: Last year in test set (e.g., 8)
+        val_years: Number of years for validation (e.g., 2 → years 7-8)
+    
+    Returns:
+        train_df: Years 1 to (max_train_year - val_years)
+        val_df: Years (max_train_year - val_years + 1) to max_train_year
+        test_df: Years > max_train_year
+    """
+    val_start_year = max_train_year - val_years + 1
+    
+    train_df = df_all[df_all['year'] < val_start_year].copy()
+    val_df = df_all[(df_all['year'] >= val_start_year) & (df_all['year'] <= max_train_year)].copy()
     test_df = df_all[df_all['year'] > max_train_year].copy()
-        
-    return train_df, test_df
+    
+    print(f"  Train years: 1-{val_start_year-1} ({len(train_df)} samples)")
+    print(f"  Val years: {val_start_year}-{max_train_year} ({len(val_df)} samples)")
+    print(f"  Test years: {max_train_year+1}+ ({len(test_df)} samples)")
+    
+    return train_df, val_df, test_df
+
+
+def generate_walk_forward_splits(
+    df_all: pd.DataFrame,
+    max_train_year: int = 8,
+    val_years: int = 2
+) -> list:
+    """Generate walk-forward (rolling) validation folds.
+    For each validation year in the range (max_train_year - val_years + 1) .. max_train_year
+    create a fold: train = years < val_year, val = year == val_year.
+    """
+    folds = []
+    val_start = max_train_year - val_years + 1
+    for val_year in range(val_start, max_train_year + 1):
+        train = df_all[df_all['year'] < val_year].copy()
+        val = df_all[df_all['year'] == val_year].copy()
+        folds.append((train, val))
+    return folds
 
 
 # =============================================================================
-# 4. FEATURE ENGINEERING (NO LEAKAGE)
+# 4. FEATURE ENGINEERING WITH NO LEAKAGE AND REDUCED SET TO PREVENT OVERFITTING
 # =============================================================================
 
 def build_feature_matrix(
@@ -242,8 +278,8 @@ def build_feature_matrix(
 ) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
     """Build feature matrix X, target y and meta (predictive-only, no leakage)."""
     
-    # PREDICTIVE MODE: Only features available pre-season (no leakage)
-    feature_cols_numeric_predictive = [
+    # OLD features (before reduction to prevent overfitting)
+    Old = [
         # Historical performance (from previous seasons only)
         'prev_win_pct_1', 'prev_win_pct_3', 'prev_win_pct_5',
         'prev_point_diff_3', 'prev_point_diff_5',
@@ -267,14 +303,28 @@ def build_feature_matrix(
         'coach_career_overach_roster_ma3',
         'coach_career_rs_win_pct_ma3',
         'coach_tenure_prev',
-        'is_first_year_with_team',
     ]
-    # Use predictive feature set only (no leakage)
-    feature_cols_numeric = feature_cols_numeric_predictive
-    print("[build_feature_matrix] Using PREDICTIVE feature set (pre-season only, no leakage).")
-    
+    # New features (reduced set to prevent overfitting)
+    feature_cols_numeric = [
+        # Core historical performance (most stable)
+        'prev_win_pct_3', 'prev_win_pct_5',
+        'prev_point_diff_5',
+        
+        # Roster quality (objective pre-season metric)
+        'team_strength',
+        
+        # Key rolling averages (removed short-term MA3 to reduce noise)
+        'point_diff_ma5', 'point_diff_trend5',
+        'off_eff_ma5', 'def_eff_ma5',
+        'pythag_win_pct_ma5', 'pythag_win_pct_trend5',
+        'team_strength_ma5',
+        
+        # Coach features (career averages only, most stable)
+        'coach_career_rs_win_pct_ma3',
+        'coach_tenure_prev',
+    ]    
+
     df_work = df.copy()
-    
     # Ensure numeric features exist and are float (no silent NaNs)
     for col in feature_cols_numeric:
         if col not in df_work.columns:
@@ -316,7 +366,6 @@ def build_feature_matrix(
             f"  {bad_cols}\n\n"
             f"These features appear to contain current-season results and cannot be used for forecasting."
         )
-    print(f"  ✓ Guardrail passed: no leakage-prone features detected in X ({len(X.columns)} features)")
     
     # Target (rank within conference)
     y = pd.to_numeric(df_work['rank'], errors='coerce')
@@ -437,16 +486,23 @@ def predict_ranks_pairwise(
 
 
 # =============================================================================
-# 6. MODEL FACTORY & HYPERPARAMETER OPTIMIZATION
+# 6. MODEL FACTORY WITH EARLY STOPPING & REGULARIZATION
 # =============================================================================
 
-def create_pairwise_model() -> GradientBoostingClassifier: 
-    """ Create pairwise model for learning-to-rank. 
-    Default hyperparameters (will be optimized). """ 
+def create_pairwise_model() -> GradientBoostingClassifier:
     return GradientBoostingClassifier(
-        learning_rate=0.05,
-        n_estimators=500,
-        random_state=RANDOM_STATE)
+        n_estimators=200,          # Number of boosting stages (trees). More trees can capture more complexity but increase risk of overfitting and training time.
+        learning_rate=0.03,        # Shrinkage applied to each tree's contribution. Smaller values improve generalization but require more trees.
+        max_depth=2,               # Max tree depth. Low depth (very shallow trees) constrains model complexity and helps prevent overfitting.
+        min_samples_split=30,      # Minimum samples required to split an internal node. Larger values avoid splits on small, noisy subsets.
+        min_samples_leaf=15,       # Minimum samples required to be at a leaf node. Ensures leaf predictions are based on enough data for stability.
+        subsample=0.7,             # Fraction of samples used per tree (stochastic boosting). Values <1.0 reduce variance and improve robustness.
+        max_features='sqrt',       # Number of features to consider when looking for best split ('sqrt' reduces correlation between trees).
+        random_state=RANDOM_STATE, # Seed for reproducible results (controls randomness in subsampling and feature selection).
+        validation_fraction=0.15,  # Fraction of training data reserved internally for early stopping evaluation.
+        n_iter_no_change=15,       # Stop if validation score does not improve for this many iterations (early stopping patience).
+        tol=1e-3                   # Minimum relative improvement to qualify as an actual improvement for early stopping.
+    )
 
 # =============================================================================
 # 7. RANKING CONVERSION (score → rank within conference)
@@ -468,17 +524,46 @@ def add_predicted_rank(meta_df: pd.DataFrame, y_pred: np.ndarray) -> pd.DataFram
 
 
 # =============================================================================
-# 8. EVALUATION METRICS (conference-aware)
+# 8. EVALUATION METRICS AND NDCG
 # =============================================================================
 
+def calculate_ndcg_at_k(y_true: np.ndarray, y_pred: np.ndarray, k: int = 10) -> float:
+    """Calculate Normalized Discounted Cumulative Gain at K.
+        Best rank = 1 (highest relevance)
+    """
+    # Convert ranks to relevance scores (lower rank = higher relevance)
+    # relevance = max_rank - rank + 1
+    max_rank = max(y_true.max(), y_pred.max())
+    true_relevance = max_rank - y_true + 1
+    
+    # Sort by predicted rank and get top-k
+    order = np.argsort(y_pred)[:k]
+    true_relevance_sorted = true_relevance[order]
+    
+    # DCG: sum of (relevance / log2(position + 1))
+    positions = np.arange(1, len(true_relevance_sorted) + 1)
+    dcg = np.sum(true_relevance_sorted / np.log2(positions + 1))
+    
+    # IDCG: DCG of perfect ranking
+    ideal_order = np.argsort(y_true)[:k]
+    ideal_relevance = true_relevance[ideal_order]
+    idcg = np.sum(ideal_relevance / np.log2(np.arange(1, len(ideal_relevance) + 1) + 1))
+    
+    # NDCG
+    if idcg == 0:
+        return 0.0
+    return dcg / idcg
+
+
 def evaluate(df_with_ranks: pd.DataFrame, split_name: str) -> Dict:
-    """Compute MAE, mean Spearman and Top-K accuracies per conference groups."""
+    """Compute MAE, mean Spearman, NDCG and Top-K accuracies per conference groups."""
     
     # Global MAE
     mae_rank = mean_absolute_error(df_with_ranks['rank'], df_with_ranks['pred_rank'])
     
     # Per-group metrics
     spearman_corrs = []
+    ndcg_scores = []
     top_k_correct = {k: 0 for k in range(1, 11)}  # top-1 to top-10
     total_groups = 0
     
@@ -488,6 +573,15 @@ def evaluate(df_with_ranks: pd.DataFrame, split_name: str) -> Dict:
             corr, _ = spearmanr(group['rank'], group['pred_rank'])
             if not np.isnan(corr):
                 spearman_corrs.append(corr)
+            
+            # NDCG@10
+            ndcg = calculate_ndcg_at_k(
+                group['rank'].values, 
+                group['pred_rank'].values, 
+                k=min(10, len(group))
+            )
+            if not np.isnan(ndcg):
+                ndcg_scores.append(ndcg)
         
         # True champion
         true_top1 = group[group['rank'] == 1]['tmID'].values
@@ -502,6 +596,7 @@ def evaluate(df_with_ranks: pd.DataFrame, split_name: str) -> Dict:
         total_groups += 1
     
     mean_spearman = np.mean(spearman_corrs) if spearman_corrs else 0.0
+    mean_ndcg = np.mean(ndcg_scores) if ndcg_scores else 0.0
     
     # Calculate top-K accuracies
     top_k_acc = {k: top_k_correct[k] / total_groups if total_groups > 0 else 0.0 
@@ -510,6 +605,7 @@ def evaluate(df_with_ranks: pd.DataFrame, split_name: str) -> Dict:
     metrics = {
         'mae_rank': mae_rank,
         'mean_spearman': mean_spearman,
+        'mean_ndcg': mean_ndcg,
         'n_groups': total_groups
     } 
 
@@ -570,13 +666,14 @@ def save_report(
     best_params: Dict,
     best_cv_score: float,
     train_metrics: Dict,
+    val_metrics: Dict,
     test_metrics: Dict,
     test_df: pd.DataFrame,
     report_name: str = "team_ranking_report_metrics.txt",
     strict_predictive: bool = True
 ) -> Path:
-    """Read saved CSV and write a short report with MAE, Spearman and Top-K."""
-    report_path = REPORTS_DIR / report_name
+    """Read saved CSV and write a comprehensive report with all metrics."""
+    report_path = REPORTS_DIR / "team_ranking" / report_name
     csv_path = PROC_DIR / "team_ranking_predictions.csv"
 
     # Ler CSV salvo (fonte da verdade)
@@ -620,6 +717,7 @@ def save_report(
 
     # Mean Spearman Correlation (por grupo year-confID)
     spearman_corrs = []
+    ndcg_scores = []
     for (year, conf), g in df_test.groupby(["year", "confID"]):
         g = g.dropna(subset=["rank", "pred_rank"])
         if len(g) <= 1:
@@ -628,16 +726,22 @@ def save_report(
             corr, _ = spearmanr(g["rank"].astype(int), g["pred_rank"].astype(int))
             if not np.isnan(corr):
                 spearman_corrs.append(corr)
+            
+            # NDCG@10
+            ndcg = calculate_ndcg_at_k(
+                g["rank"].values.astype(int),
+                g["pred_rank"].values.astype(int),
+                k=min(10, len(g))
+            )
+            if not np.isnan(ndcg):
+                ndcg_scores.append(ndcg)
         except Exception:
             continue
     
     mean_spearman = float(np.mean(spearman_corrs)) if spearman_corrs else float("nan")
+    mean_ndcg = float(np.mean(ndcg_scores)) if ndcg_scores else float("nan")
 
     # Top-K Accuracy
-    # Para cada K de 1 a 10, calculamos a porcentagem de acertos considerando:
-    # - Acerto: O time com rank verdadeiro K está previsto no rank K
-    # - Calculado por conferência (year, confID)
-    
     total_groups = 0
     top_k_correct = {k: 0 for k in range(1, 11)}
     
@@ -683,17 +787,41 @@ def save_report(
     
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(f"GENERATED: {now} UTC\n")
-        f.write("MODE: PREDICTIVE\n")
-        f.write(f"TRAIN_SEASONS: 1-{max_train_year}\n")
+        f.write("MODE: PREDICTIVE WITH REGULARIZATION\n")
+        f.write(f"TRAIN_SEASONS: 1-{max_train_year - 2}\n")
+        f.write(f"VAL_SEASONS: {max_train_year - 1}-{max_train_year}\n")
         f.write(f"TEST_SEASONS: {max_train_year + 1}+\n\n")
+        
+        f.write("=" * 60 + "\n")
+        f.write("TRAIN METRICS\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"MAE_rank: {train_metrics['mae_rank']:.4f}\n")
+        f.write(f"Mean_Spearman: {train_metrics['mean_spearman']:.4f}\n")
+        f.write(f"Mean_NDCG@10: {train_metrics.get('mean_ndcg', 0.0):.4f}\n")
+        f.write(f"n_groups: {train_metrics['n_groups']}\n\n")
+        
+        f.write("=" * 60 + "\n")
+        f.write("VALIDATION METRICS\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"MAE_rank: {val_metrics['mae_rank']:.4f}\n")
+        f.write(f"Mean_Spearman: {val_metrics['mean_spearman']:.4f}\n")
+        f.write(f"Mean_NDCG@10: {val_metrics.get('mean_ndcg', 0.0):.4f}\n")
+        f.write(f"n_groups: {val_metrics['n_groups']}\n\n")
+        
+        f.write("=" * 60 + "\n")
+        f.write("TEST METRICS\n")
+        f.write("=" * 60 + "\n")
         f.write(f"MAE_rank: {mae_rank:.4f}\n")
         f.write(f"Mean_Spearman: {mean_spearman:.4f}\n")
+        f.write(f"Mean_NDCG@10: {mean_ndcg:.4f}\n")
         f.write(f"n_groups: {total_groups}\n\n")
-        f.write("Top-K Accuracy:\n")
+        
+        f.write("Top-K Accuracy (Test):\n")
         for k in range(1, 11):
             f.write(f"  Top-{k:2d}: {top_k_acc[k]:.2%}\n")
-        # Overall accuracy: proportion of individual team predictions where pred_rank == rank
-        valid_rows = df_test[ df_test['rank'].notna() & df_test['pred_rank'].notna() ]
+        
+        # Overall accuracy
+        valid_rows = df_test[df_test['rank'].notna() & df_test['pred_rank'].notna()]
         total_rows = len(valid_rows)
         if total_rows > 0:
             correct_rows = int((valid_rows['rank'].astype(int) == valid_rows['pred_rank'].astype(int)).sum())
@@ -703,24 +831,34 @@ def save_report(
             overall_acc = 0.0
 
         f.write("\n")
-        f.write(f"Overall_accuracy: {overall_acc:.2%} ({correct_rows}/{total_rows})\n")
-    print(f"[TeamRanking] Report saved to {report_path}")
+        f.write(f"Overall_accuracy: {overall_acc:.2%} ({correct_rows}/{total_rows})\n\n")
+        
+        # Overfitting diagnosis
+        train_test_gap = train_metrics['mae_rank'] - mae_rank
+        val_test_gap = val_metrics['mae_rank'] - mae_rank
+        
+        f.write("=" * 60 + "\n")
+        f.write("OVERFITTING DIAGNOSIS\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"Train-Test MAE gap: {train_test_gap:.4f}\n")
+        f.write(f"Val-Test MAE gap: {val_test_gap:.4f}\n")
+    
     return report_path
 
 
 # =============================================================================
-# 10. MAIN PIPELINE
+# 10. MAIN PIPELINE WITH VALIDATION SET
 # =============================================================================
 
 def run_team_ranking_model(
     max_train_year: int = 8,
+    val_years: int = 2,
     report_name: str = "team_ranking_report_enhanced.txt",
     generate_graphics: bool = True
 ) -> None:
-    """Main predictive pipeline using temporal features and pairwise ranking."""
+    """Main predictive pipeline with validation set and strong regularization."""
     print("\n" + "=" * 80)
     print("TEAM RANKING MODEL")
-    print("MODE: PREDICTIVE (pre-season forecasting, no leakage)")
     print("=" * 80)
     
     # 1. Load and merge data
@@ -734,12 +872,7 @@ def run_team_ranking_model(
     if coach_perf_path.exists():
         print("\n[TeamRanking] Loading coach performance data...")
         df_coaches = pd.read_csv(coach_perf_path)
-        
-        # AGGREGATE multiple stints per team-season
-        # When a team has multiple coaches in one season, we need to combine them
-        # Strategy: Use weighted average by games played
-        print("  ℹ Aggregating multiple coach stints per team-season...")
-        
+                
         # Calculate weights (games per stint)
         df_coaches['gp'] = df_coaches['won'] + df_coaches['lost']
         
@@ -766,46 +899,91 @@ def run_team_ranking_model(
     else:
         print("\n⚠ Coach performance data not found, skipping coach features")
     
-    # 3. Temporal split
-    train_raw, test_raw = split_train_test(df_all, max_train_year)
-  
-    
-    # 4. Build features
-    X_train, y_train, meta_train = build_feature_matrix(train_raw)
-    X_test, y_test, meta_test = build_feature_matrix(test_raw)
-    
-    # 5. Generate pairwise training data
-    X_pairs_train, y_pairs_train = generate_pairwise_data(train_raw, X_train, y_train)
-    
-    # 6. Train final model (default pairwise model)
+    # 3. Temporal split with walk-forward validation
+    folds = generate_walk_forward_splits(df_all, max_train_year, val_years)
+
+    # Folds to assess validation performance. For each fold, train on train_fold and eval on val_fold.
+    val_metrics_list = []
+    print("\n[TeamRanking] Running walk-forward validation over folds...")
+    for idx, (train_fold, val_fold) in enumerate(folds, start=1):
+        print(f"\n[Fold {idx}/{len(folds)}] Train years <= {train_fold['year'].max() if not train_fold.empty else 'N/A'} | Val year = {val_fold['year'].unique()}")
+
+        # Build features for fold
+        X_train_fold, y_train_fold, meta_train_fold = build_feature_matrix(train_fold)
+        X_val_fold, y_val_fold, meta_val_fold = build_feature_matrix(val_fold)
+
+        # pairwise for fold
+        X_pairs_fold, y_pairs_fold = generate_pairwise_data(train_fold, X_train_fold, y_train_fold)
+
+        # train model
+        model_fold = create_pairwise_model()
+        if len(X_pairs_fold) == 0:
+            print("  ⚠ Not enough pairwise samples for fold, skipping")
+            continue
+        model_fold.fit(X_pairs_fold, y_pairs_fold)
+
+        # predict and evaluate on validation fold
+        y_pred_val_fold = predict_ranks_pairwise(model_fold, val_fold, X_val_fold)
+        val_with_ranks_fold = add_predicted_rank(meta_val_fold, y_pred_val_fold)
+        metrics_fold = evaluate(val_with_ranks_fold, f"FOLD_{idx}")
+        val_metrics_list.append(metrics_fold)
+        print(f"  Fold {idx} val MAE: {metrics_fold['mae_rank']:.3f} | Spearman: {metrics_fold['mean_spearman']:.3f} | NDCG: {metrics_fold.get('mean_ndcg',0):.3f}")
+
+    # Aggregate validation metrics
+    if val_metrics_list:
+        agg_val_metrics = {
+            'mae_rank': float(np.mean([m['mae_rank'] for m in val_metrics_list])),
+            'mean_spearman': float(np.mean([m['mean_spearman'] for m in val_metrics_list])),
+            'mean_ndcg': float(np.mean([m.get('mean_ndcg', 0.0) for m in val_metrics_list])),
+            'n_groups': int(np.sum([m['n_groups'] for m in val_metrics_list]))
+        }
+    else:
+        agg_val_metrics = {'mae_rank': float('nan'), 'mean_spearman': float('nan'), 'mean_ndcg': float('nan'), 'n_groups': 0}
+
+    print(f"\n[TeamRanking] Aggregated validation MAE: {agg_val_metrics['mae_rank']:.3f} | Spearman: {agg_val_metrics['mean_spearman']:.3f}")
+
+    # 4. Train final model on all data up to max_train_year (include validation years) and evaluate on test
+    train_final = df_all[df_all['year'] <= max_train_year].copy()
+    test_final = df_all[df_all['year'] > max_train_year].copy()
+
+    X_train_final, y_train_final, meta_train_final = build_feature_matrix(train_final)
+    X_test_final, y_test_final, meta_test_final = build_feature_matrix(test_final)
+
+    X_pairs_final, y_pairs_final = generate_pairwise_data(train_final, X_train_final, y_train_final)
     final_model = create_pairwise_model()
-    final_model.fit(X_pairs_train, y_pairs_train)
+    if len(X_pairs_final) == 0:
+        raise RuntimeError("Not enough pairwise samples to train final model")
+    final_model.fit(X_pairs_final, y_pairs_final)
     best_params = final_model.get_params()
     best_cv_score = 0.0
-    print("  ✓ Model trained")
-    
-    # 7. Predict using pairwise model
-    y_pred_train = predict_ranks_pairwise(final_model, train_raw, X_train)
-    y_pred_test = predict_ranks_pairwise(final_model, test_raw, X_test)
-    print("  ✓ Predictions generated")
-    
-    # 8. Convert to ranks (within conference)
-    train_with_ranks = add_predicted_rank(meta_train, y_pred_train)
-    test_with_ranks = add_predicted_rank(meta_test, y_pred_test)
-    
-    # 9. Evaluate
-    train_metrics = evaluate(train_with_ranks, "TRAIN (full)")
-    test_metrics = evaluate(test_with_ranks, "TEST (holdout)")
-    
-    # 10. Save outputs
+    print(f"  ✓ Final model trained with {final_model.n_estimators_} estimators (early stopped)")
+
+    # Predict on train_final and test_final
+    y_pred_train = predict_ranks_pairwise(final_model, train_final, X_train_final)
+    y_pred_test = predict_ranks_pairwise(final_model, test_final, X_test_final)
+
+    # Convert to ranks
+    train_with_ranks = add_predicted_rank(meta_train_final, y_pred_train)
+    test_with_ranks = add_predicted_rank(meta_test_final, y_pred_test)
+
+    # Evaluate
+    print("\n[TeamRanking] Evaluating final model on train_final and test_final...")
+    train_metrics = evaluate(train_with_ranks, "TRAIN")
+    val_metrics = agg_val_metrics
+    test_metrics = evaluate(test_with_ranks, "TEST")
+
+    # Save outputs
+    train_with_ranks['split'] = 'train'
+    test_with_ranks['split'] = 'test'
     save_predictions(train_with_ranks, test_with_ranks)
+
     save_report(
         max_train_year, best_params, best_cv_score,
-        train_metrics, test_metrics,
+        train_metrics, val_metrics, test_metrics,
         test_with_ranks, report_name,
         strict_predictive=True
     )
-    
+
     # 11. Generate graphics
     print("\n[TeamRanking] Generating visualizations...")
     if generate_graphics:
@@ -818,13 +996,16 @@ def run_team_ranking_model(
 
 if __name__ == "__main__":
     # ======== Configurations ========
-    MAX_TRAIN_YEAR = 8                 # Last year for training
+    MAX_TRAIN_YEAR = 8                 # Last year for training+validation
+    VAL_YEARS = 2                      # Years reserved for validation (e.g., 7-8)
     REPORT_NAME = "team_ranking_report.txt"  # Output report filename
     GRAFICS = True                     # Whether to generate graphics
     
-    # This script runs the predictive (pre-season, no-leakage) model only
+    # This script runs the predictive (pre-season, no-leakage) model
+    # with strong regularization to prevent overfitting
     run_team_ranking_model(
         max_train_year=MAX_TRAIN_YEAR,
+        val_years=VAL_YEARS,
         report_name=REPORT_NAME,
         generate_graphics=GRAFICS
     )

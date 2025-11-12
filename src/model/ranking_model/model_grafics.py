@@ -35,7 +35,7 @@ plt.rcParams['legend.fontsize'] = 10
 # Paths
 ROOT = Path(__file__).resolve().parents[3]
 PROC_DIR = ROOT / "data" / "processed"
-GRAPHICS_DIR = ROOT / "reports" / "models" / "graphics"
+GRAPHICS_DIR = ROOT / "reports" / "models" / "team_ranking" / "graphics"
 GRAPHICS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -59,7 +59,6 @@ def load_predictions() -> pd.DataFrame:
     df['pred_rank'] = pd.to_numeric(df['pred_rank'], errors='coerce')
     
     return df
-
 
 def calculate_metrics_by_group(df: pd.DataFrame, group_cols: list) -> pd.DataFrame:
     """
@@ -105,7 +104,6 @@ def calculate_metrics_by_group(df: pd.DataFrame, group_cols: list) -> pd.DataFra
         metrics_list.append(result)
     
     return pd.DataFrame(metrics_list)
-
 
 def plot_metrics_by_year(df: pd.DataFrame, save_path: Optional[Path] = None) -> None:
     """
@@ -161,7 +159,6 @@ def plot_metrics_by_year(df: pd.DataFrame, save_path: Optional[Path] = None) -> 
     plt.close()
     
     print(f"  ✓ Saved: {save_path}")
-
 
 def plot_train_vs_test_comparison(df: pd.DataFrame, save_path: Optional[Path] = None) -> None:
     """
@@ -221,7 +218,6 @@ def plot_train_vs_test_comparison(df: pd.DataFrame, save_path: Optional[Path] = 
     plt.close()
     
     print(f"  ✓ Saved: {save_path}")
-
 
 def plot_conference_comparison(df: pd.DataFrame, save_path: Optional[Path] = None) -> None:
     """
@@ -285,8 +281,6 @@ def plot_conference_comparison(df: pd.DataFrame, save_path: Optional[Path] = Non
     plt.close()
     
     print(f"  ✓ Saved: {save_path}")
-
-
 
 def plot_year_conference_heatmap(df: pd.DataFrame, save_path: Optional[Path] = None, test_only: bool = True) -> None:
     """
@@ -421,7 +415,6 @@ def plot_prediction_scatter(df: pd.DataFrame, save_path: Optional[Path] = None) 
     
     print(f"  ✓ Saved: {save_path}")
 
-
 def plot_top_k_accuracy(df: pd.DataFrame, save_path: Optional[Path] = None) -> None:
     """
     Plot Top-K accuracy for different values of K.
@@ -479,7 +472,6 @@ def plot_top_k_accuracy(df: pd.DataFrame, save_path: Optional[Path] = None) -> N
     
     print(f"  ✓ Saved: {save_path}")
 
-
 def generate_all_graphics() -> None:
     """
     Main function to generate all graphics.
@@ -513,7 +505,6 @@ def generate_all_graphics() -> None:
         print(f"\n✗ Error generating graphics: {e}")
         import traceback
         traceback.print_exc()
-
 
 if __name__ == "__main__":
     # Allow running this module standalone for testing

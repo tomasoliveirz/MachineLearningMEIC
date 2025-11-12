@@ -1,143 +1,143 @@
 year,confID,tmID,name,rank,pred_rank,pred_score,split
-1,EA,ORL,Orlando Miracle,3,1,4.147515,train
-1,EA,CHA,Charlotte Sting,8,2,3.725360,train
-1,EA,CLE,Cleveland Rockers,2,3,3.725360,train
-1,EA,DET,Detroit Shock,5,4,3.725360,train
-1,EA,IND,Indiana Fever,7,5,3.725360,train
-1,EA,MIA,Miami Sol,6,6,3.725360,train
-1,EA,NYL,New York Liberty,1,7,3.725360,train
-1,EA,WAS,Washington Mystics,4,8,3.725360,train
-1,WE,UTA,Utah Starzz,5,1,4.147515,train
-1,WE,HOU,Houston Comets,2,2,3.725360,train
-1,WE,LAS,Los Angeles Sparks,1,3,3.725360,train
-1,WE,MIN,Minnesota Lynx,6,4,3.725360,train
-1,WE,PHO,Phoenix Mercury,4,5,3.725360,train
-1,WE,POR,Portland Fire,7,6,3.725360,train
-1,WE,SAC,Sacramento Monarchs,3,7,3.725360,train
-1,WE,SEA,Seattle Storm,8,8,3.725360,train
-2,EA,NYL,New York Liberty,2,1,5.381691,train
-2,EA,CLE,Cleveland Rockers,1,2,5.330546,train
-2,EA,ORL,Orlando Miracle,5,3,5.183357,train
-2,EA,CHA,Charlotte Sting,4,4,3.591210,train
-2,EA,MIA,Miami Sol,3,5,2.489066,train
-2,EA,WAS,Washington Mystics,8,6,2.310883,train
-2,EA,DET,Detroit Shock,7,7,2.137018,train
-2,EA,IND,Indiana Fever,6,8,1.667059,train
-2,WE,LAS,Los Angeles Sparks,1,1,6.036423,train
-2,WE,SAC,Sacramento Monarchs,2,2,4.780316,train
-2,WE,HOU,Houston Comets,4,3,4.502640,train
-2,WE,UTA,Utah Starzz,3,4,3.117800,train
-2,WE,MIN,Minnesota Lynx,6,5,2.883703,train
-2,WE,PHO,Phoenix Mercury,5,6,2.709344,train
-2,WE,POR,Portland Fire,7,7,2.443592,train
-2,WE,SEA,Seattle Storm,8,8,1.450226,train
-3,EA,NYL,New York Liberty,1,1,6.053215,train
-3,EA,CHA,Charlotte Sting,2,2,5.259271,train
-3,EA,IND,Indiana Fever,4,3,4.216214,train
-3,EA,CLE,Cleveland Rockers,7,4,3.405215,train
-3,EA,ORL,Orlando Miracle,5,5,1.917609,train
-3,EA,MIA,Miami Sol,6,6,1.729054,train
-3,EA,DET,Detroit Shock,8,7,1.167830,train
-3,EA,WAS,Washington Mystics,3,8,1.042669,train
-3,WE,LAS,Los Angeles Sparks,1,1,6.361868,train
-3,WE,HOU,Houston Comets,2,2,5.377801,train
-3,WE,UTA,Utah Starzz,3,3,4.394025,train
-3,WE,SAC,Sacramento Monarchs,6,4,4.001482,train
-3,WE,POR,Portland Fire,5,5,2.302825,train
-3,WE,PHO,Phoenix Mercury,7,6,1.579266,train
-3,WE,SEA,Seattle Storm,4,7,1.357176,train
-3,WE,MIN,Minnesota Lynx,8,8,1.180067,train
-4,EA,NYL,New York Liberty,6,1,5.172631,train
-4,EA,DET,Detroit Shock,1,2,4.598557,train
-4,EA,IND,Indiana Fever,5,3,4.358591,train
-4,EA,CHA,Charlotte Sting,2,4,4.176324,train
-4,EA,WAS,Washington Mystics,7,5,4.051965,train
-4,EA,CLE,Cleveland Rockers,4,6,3.435424,train
-4,EA,CON,Connecticut Sun,3,7,2.948102,train
-4,WE,LAS,Los Angeles Sparks,1,1,5.259570,train
-4,WE,HOU,Houston Comets,2,2,4.372176,train
-4,WE,SAC,Sacramento Monarchs,3,3,3.996120,train
-4,WE,SEA,Seattle Storm,5,4,3.369552,train
-4,WE,MIN,Minnesota Lynx,4,5,2.416634,train
-4,WE,PHO,Phoenix Mercury,7,6,2.052280,train
-4,WE,SAS,San Antonio Silver Stars,6,7,1.553487,train
-5,EA,CON,Connecticut Sun,1,1,4.249060,train
-5,EA,DET,Detroit Shock,3,2,3.565722,train
-5,EA,NYL,New York Liberty,2,3,2.529349,train
-5,EA,CHA,Charlotte Sting,5,4,2.002909,train
-5,EA,WAS,Washington Mystics,4,5,1.274933,train
-5,EA,IND,Indiana Fever,6,6,0.773514,train
-5,WE,LAS,Los Angeles Sparks,1,1,5.127065,train
-5,WE,SEA,Seattle Storm,2,2,4.329127,train
-5,WE,MIN,Minnesota Lynx,3,3,3.858954,train
-5,WE,SAC,Sacramento Monarchs,4,4,3.640160,train
-5,WE,HOU,Houston Comets,6,5,2.455891,train
-5,WE,SAS,San Antonio Silver Stars,7,6,2.035244,train
-5,WE,PHO,Phoenix Mercury,5,7,1.385351,train
-6,EA,CON,Connecticut Sun,1,1,4.192159,train
-6,EA,IND,Indiana Fever,2,2,3.218091,train
-6,EA,NYL,New York Liberty,3,3,2.732185,train
-6,EA,DET,Detroit Shock,4,4,2.697020,train
-6,EA,WAS,Washington Mystics,5,5,1.733473,train
-6,EA,CHA,Charlotte Sting,6,6,0.594230,train
-6,WE,SAC,Sacramento Monarchs,1,1,4.481863,train
-6,WE,SEA,Seattle Storm,2,2,4.235502,train
-6,WE,HOU,Houston Comets,3,3,3.927500,train
-6,WE,LAS,Los Angeles Sparks,4,4,3.924865,train
-6,WE,PHO,Phoenix Mercury,5,5,3.078945,train
-6,WE,MIN,Minnesota Lynx,6,6,2.605682,train
-6,WE,SAS,San Antonio Silver Stars,7,7,1.458540,train
-7,EA,CON,Connecticut Sun,1,1,5.309818,train
-7,EA,DET,Detroit Shock,2,2,4.801883,train
-7,EA,IND,Indiana Fever,3,3,4.262595,train
-7,EA,WAS,Washington Mystics,4,4,3.746992,train
-7,EA,NYL,New York Liberty,5,5,3.462171,train
-7,EA,CHA,Charlotte Sting,6,6,1.405992,train
-7,EA,CHI,Chicago Sky,7,7,1.135134,train
-7,WE,SAC,Sacramento Monarchs,2,1,5.147712,train
-7,WE,LAS,Los Angeles Sparks,1,2,5.006041,train
-7,WE,SEA,Seattle Storm,4,3,4.910459,train
-7,WE,HOU,Houston Comets,3,4,3.652598,train
-7,WE,PHO,Phoenix Mercury,5,5,2.370783,train
-7,WE,SAS,San Antonio Silver Stars,6,6,2.139580,train
-7,WE,MIN,Minnesota Lynx,7,7,0.935859,train
-8,EA,CON,Connecticut Sun,3,1,3.881567,train
-8,EA,DET,Detroit Shock,1,2,3.425120,train
-8,EA,WAS,Washington Mystics,5,3,2.838427,train
-8,EA,IND,Indiana Fever,2,4,2.607596,train
-8,EA,NYL,New York Liberty,4,5,2.373777,train
-8,EA,CHI,Chicago Sky,6,6,0.424788,train
-8,WE,PHO,Phoenix Mercury,1,1,4.864192,train
-8,WE,SEA,Seattle Storm,4,2,4.647803,train
-8,WE,SAS,San Antonio Silver Stars,2,3,3.703593,train
-8,WE,SAC,Sacramento Monarchs,3,4,2.477496,train
-8,WE,HOU,Houston Comets,5,5,2.137935,train
-8,WE,LAS,Los Angeles Sparks,7,6,1.458830,train
-8,WE,MIN,Minnesota Lynx,6,7,1.301045,train
-9,EA,DET,Detroit Shock,1,1,4.393088,test
-9,EA,CON,Connecticut Sun,2,2,4.333856,test
-9,EA,IND,Indiana Fever,4,3,3.110133,test
-9,EA,NYL,New York Liberty,3,4,2.641042,test
-9,EA,WAS,Washington Mystics,6,5,2.403018,test
-9,EA,CHI,Chicago Sky,5,6,2.002497,test
-9,EA,ATL,Atlanta Dream,7,7,1.380323,test
-9,WE,PHO,Phoenix Mercury,6,1,4.251420,test
-9,WE,LAS,Los Angeles Sparks,3,2,4.222057,test
-9,WE,SAC,Sacramento Monarchs,4,3,3.947342,test
-9,WE,MIN,Minnesota Lynx,7,4,3.466704,test
-9,WE,HOU,Houston Comets,5,5,3.195411,test
-9,WE,SAS,San Antonio Silver Stars,1,6,3.024569,test
-9,WE,SEA,Seattle Storm,2,7,2.307153,test
-10,EA,CON,Connecticut Sun,6,1,4.680947,test
-10,EA,CHI,Chicago Sky,5,2,4.061407,test
-10,EA,DET,Detroit Shock,3,3,3.744065,test
-10,EA,ATL,Atlanta Dream,2,4,3.028932,test
-10,EA,IND,Indiana Fever,1,5,2.415307,test
-10,EA,NYL,New York Liberty,7,6,2.011013,test
-10,EA,WAS,Washington Mystics,4,7,1.461213,test
-10,WE,PHO,Phoenix Mercury,1,1,4.017431,test
-10,WE,SEA,Seattle Storm,2,2,3.875601,test
-10,WE,LAS,Los Angeles Sparks,3,3,3.611334,test
-10,WE,SAS,San Antonio Silver Stars,4,4,3.225531,test
-10,WE,MIN,Minnesota Lynx,5,5,1.626599,test
-10,WE,SAC,Sacramento Monarchs,6,6,1.482338,test
+1,EA,CHA,Charlotte Sting,8,1,3.833494,train
+1,EA,CLE,Cleveland Rockers,2,2,3.833494,train
+1,EA,DET,Detroit Shock,5,3,3.833494,train
+1,EA,IND,Indiana Fever,7,4,3.833494,train
+1,EA,MIA,Miami Sol,6,5,3.833494,train
+1,EA,NYL,New York Liberty,1,6,3.833494,train
+1,EA,ORL,Orlando Miracle,3,7,3.833494,train
+1,EA,WAS,Washington Mystics,4,8,3.833494,train
+1,WE,HOU,Houston Comets,2,1,3.833494,train
+1,WE,LAS,Los Angeles Sparks,1,2,3.833494,train
+1,WE,MIN,Minnesota Lynx,6,3,3.833494,train
+1,WE,PHO,Phoenix Mercury,4,4,3.833494,train
+1,WE,POR,Portland Fire,7,5,3.833494,train
+1,WE,SAC,Sacramento Monarchs,3,6,3.833494,train
+1,WE,SEA,Seattle Storm,8,7,3.833494,train
+1,WE,UTA,Utah Starzz,5,8,3.833494,train
+2,EA,NYL,New York Liberty,2,1,4.464561,train
+2,EA,ORL,Orlando Miracle,5,2,4.441596,train
+2,EA,CLE,Cleveland Rockers,1,3,4.216119,train
+2,EA,DET,Detroit Shock,7,4,3.653205,train
+2,EA,WAS,Washington Mystics,8,5,3.447953,train
+2,EA,CHA,Charlotte Sting,4,6,3.394789,train
+2,EA,IND,Indiana Fever,6,7,3.163514,train
+2,EA,MIA,Miami Sol,3,8,2.713337,train
+2,WE,HOU,Houston Comets,4,1,5.052262,train
+2,WE,LAS,Los Angeles Sparks,1,2,5.003152,train
+2,WE,SAC,Sacramento Monarchs,2,3,4.626756,train
+2,WE,UTA,Utah Starzz,3,4,3.438048,train
+2,WE,MIN,Minnesota Lynx,6,5,3.236010,train
+2,WE,PHO,Phoenix Mercury,5,6,3.134121,train
+2,WE,POR,Portland Fire,7,7,2.751249,train
+2,WE,SEA,Seattle Storm,8,8,2.180573,train
+3,EA,NYL,New York Liberty,1,1,4.877344,train
+3,EA,CLE,Cleveland Rockers,7,2,4.093094,train
+3,EA,CHA,Charlotte Sting,2,3,3.729157,train
+3,EA,ORL,Orlando Miracle,5,4,3.640420,train
+3,EA,IND,Indiana Fever,4,5,3.587135,train
+3,EA,DET,Detroit Shock,8,6,3.273755,train
+3,EA,MIA,Miami Sol,6,7,3.064354,train
+3,EA,WAS,Washington Mystics,3,8,2.675726,train
+3,WE,LAS,Los Angeles Sparks,1,1,5.270411,train
+3,WE,HOU,Houston Comets,2,2,4.520919,train
+3,WE,UTA,Utah Starzz,3,3,4.059688,train
+3,WE,SAC,Sacramento Monarchs,6,4,3.881609,train
+3,WE,PHO,Phoenix Mercury,7,5,3.268844,train
+3,WE,MIN,Minnesota Lynx,8,6,3.172038,train
+3,WE,POR,Portland Fire,5,7,2.867386,train
+3,WE,SEA,Seattle Storm,4,8,2.236220,train
+4,EA,NYL,New York Liberty,6,1,4.172830,train
+4,EA,CLE,Cleveland Rockers,4,2,3.429271,train
+4,EA,IND,Indiana Fever,5,3,3.334957,train
+4,EA,WAS,Washington Mystics,7,4,3.322849,train
+4,EA,DET,Detroit Shock,1,5,3.152768,train
+4,EA,CHA,Charlotte Sting,2,6,3.105688,train
+4,EA,CON,Connecticut Sun,3,7,1.890884,train
+4,WE,LAS,Los Angeles Sparks,1,1,4.562762,train
+4,WE,HOU,Houston Comets,2,2,3.937892,train
+4,WE,SAC,Sacramento Monarchs,3,3,3.662051,train
+4,WE,PHO,Phoenix Mercury,7,4,2.677504,train
+4,WE,SEA,Seattle Storm,5,5,2.548068,train
+4,WE,MIN,Minnesota Lynx,4,6,2.523290,train
+4,WE,SAS,San Antonio Silver Stars,6,7,1.913823,train
+5,EA,CON,Connecticut Sun,1,1,3.284970,train
+5,EA,NYL,New York Liberty,2,2,3.079165,train
+5,EA,DET,Detroit Shock,3,3,3.005487,train
+5,EA,CHA,Charlotte Sting,5,4,2.707023,train
+5,EA,IND,Indiana Fever,6,5,1.957920,train
+5,EA,WAS,Washington Mystics,4,6,1.859028,train
+5,WE,LAS,Los Angeles Sparks,1,1,4.437649,train
+5,WE,HOU,Houston Comets,6,2,3.741639,train
+5,WE,SAC,Sacramento Monarchs,4,3,3.173542,train
+5,WE,MIN,Minnesota Lynx,3,4,2.961657,train
+5,WE,SAS,San Antonio Silver Stars,7,5,2.742999,train
+5,WE,SEA,Seattle Storm,2,6,2.691842,train
+5,WE,PHO,Phoenix Mercury,5,7,2.240611,train
+6,EA,CON,Connecticut Sun,1,1,3.299313,train
+6,EA,DET,Detroit Shock,4,2,3.184292,train
+6,EA,IND,Indiana Fever,2,3,2.632293,train
+6,EA,WAS,Washington Mystics,5,4,2.356139,train
+6,EA,NYL,New York Liberty,3,5,2.296723,train
+6,EA,CHA,Charlotte Sting,6,6,2.023075,train
+6,WE,SAC,Sacramento Monarchs,1,1,3.694687,train
+6,WE,LAS,Los Angeles Sparks,4,2,3.491146,train
+6,WE,HOU,Houston Comets,3,3,3.375976,train
+6,WE,SEA,Seattle Storm,2,4,3.304994,train
+6,WE,MIN,Minnesota Lynx,6,5,2.928174,train
+6,WE,PHO,Phoenix Mercury,5,6,2.861704,train
+6,WE,SAS,San Antonio Silver Stars,7,7,2.727254,train
+7,EA,CON,Connecticut Sun,1,1,4.222226,train
+7,EA,DET,Detroit Shock,2,2,3.868922,train
+7,EA,NYL,New York Liberty,5,3,3.464651,train
+7,EA,IND,Indiana Fever,3,4,3.443517,train
+7,EA,WAS,Washington Mystics,4,5,3.191929,train
+7,EA,CHA,Charlotte Sting,6,6,2.013120,train
+7,EA,CHI,Chicago Sky,7,7,1.719631,train
+7,WE,SAC,Sacramento Monarchs,2,1,3.965807,train
+7,WE,SEA,Seattle Storm,4,2,3.902065,train
+7,WE,LAS,Los Angeles Sparks,1,3,3.507823,train
+7,WE,HOU,Houston Comets,3,4,3.027573,train
+7,WE,PHO,Phoenix Mercury,5,5,2.534191,train
+7,WE,MIN,Minnesota Lynx,7,6,2.225519,train
+7,WE,SAS,San Antonio Silver Stars,6,7,2.158976,train
+8,EA,CON,Connecticut Sun,3,1,3.516659,train
+8,EA,DET,Detroit Shock,1,2,3.199517,train
+8,EA,WAS,Washington Mystics,5,3,2.795778,train
+8,EA,IND,Indiana Fever,2,4,2.563938,train
+8,EA,NYL,New York Liberty,4,5,1.702933,train
+8,EA,CHI,Chicago Sky,6,6,1.463716,train
+8,WE,LAS,Los Angeles Sparks,7,1,4.051822,train
+8,WE,SEA,Seattle Storm,4,2,3.991030,train
+8,WE,PHO,Phoenix Mercury,1,3,3.444442,train
+8,WE,SAC,Sacramento Monarchs,3,4,3.041832,train
+8,WE,SAS,San Antonio Silver Stars,2,5,2.365607,train
+8,WE,HOU,Houston Comets,5,6,2.347115,train
+8,WE,MIN,Minnesota Lynx,6,7,2.021341,train
+9,EA,CON,Connecticut Sun,2,1,4.431282,test
+9,EA,DET,Detroit Shock,1,2,4.063558,test
+9,EA,IND,Indiana Fever,4,3,3.064029,test
+9,EA,WAS,Washington Mystics,6,4,3.031154,test
+9,EA,CHI,Chicago Sky,5,5,2.445056,test
+9,EA,NYL,New York Liberty,3,6,2.361607,test
+9,EA,ATL,Atlanta Dream,7,7,1.753113,test
+9,WE,SEA,Seattle Storm,2,1,3.751829,test
+9,WE,SAC,Sacramento Monarchs,4,2,3.472067,test
+9,WE,LAS,Los Angeles Sparks,3,3,3.406702,test
+9,WE,PHO,Phoenix Mercury,6,4,3.064655,test
+9,WE,SAS,San Antonio Silver Stars,1,5,2.633670,test
+9,WE,MIN,Minnesota Lynx,7,6,2.464769,test
+9,WE,HOU,Houston Comets,5,7,2.442723,test
+10,EA,CON,Connecticut Sun,6,1,4.304521,test
+10,EA,DET,Detroit Shock,3,2,4.167055,test
+10,EA,CHI,Chicago Sky,5,3,2.862785,test
+10,EA,IND,Indiana Fever,1,4,2.851554,test
+10,EA,NYL,New York Liberty,7,5,2.619433,test
+10,EA,ATL,Atlanta Dream,2,6,2.361129,test
+10,EA,WAS,Washington Mystics,4,7,2.031134,test
+10,WE,PHO,Phoenix Mercury,1,1,3.223038,test
+10,WE,SEA,Seattle Storm,2,2,2.993234,test
+10,WE,LAS,Los Angeles Sparks,3,3,2.806754,test
+10,WE,SAC,Sacramento Monarchs,6,4,2.512924,test
+10,WE,SAS,San Antonio Silver Stars,4,5,2.361029,test
+10,WE,MIN,Minnesota Lynx,5,6,1.717576,test
