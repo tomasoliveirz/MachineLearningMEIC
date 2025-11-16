@@ -1,0 +1,28 @@
+Relatório Change Coaches - RandomForest
+================================================================================
+Feature                            Importância
+--------------------------------------------------------------------------------
+is_first_year                           0.3062
+current_point_diff                      0.2292
+overach_roster                          0.1865
+attend_pg                               0.1728
+lag1_point_diff                         0.0918
+made_playoffs                           0.0134
+
+Métricas (treino - sanity check):
+  AUC            : 0.9451
+  Precision      : 0.8542
+  Recall         : 0.7885
+  F1-Score       : 0.8200
+
+Métricas (walk-forward validation):
+  AUC            : 0.6736
+  Precision      : 0.5500
+  Recall         : 0.5000
+  F1-Score       : 0.5227
+
+Métricas (TESTE - resultado final):
+  AUC            : 0.9133
+  Precision      : 0.4286
+  Recall         : 1.0000
+  F1-Score       : 0.6000
