@@ -7,7 +7,7 @@ import numpy as np
 from scipy.stats import spearmanr
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import mean_absolute_error
-from model_grafics import generate_all_graphics
+from model_graphics import generate_all_graphics
 
 warnings.filterwarnings('ignore')
 
