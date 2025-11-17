@@ -5,11 +5,13 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score, classification_report
 from sklearn.exceptions import UndefinedMetricWarning
+from model_graphics import generate_all_graphics
 
 # Paths
 ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = ROOT / "data" / "processed"
 REPORT_DIR = ROOT / "reports" / "models" / "change_coaches"
+GRAPHICS_DIR = REPORT_DIR / "graphics"
 RANDOM_STATE = 42
 
 # Features
@@ -449,6 +451,16 @@ def main():
     
     # 7. Relatório com walk-forward metrics
     save_report(model_final, FEATURE_COLS, train_metrics, val_metrics, test_metrics, wf_metrics)
+
+    # 8. GERAR GRÁFICOS (A NOVA ADIÇÃO)
+    # Passa o modelo final, os dados de TESTE e os nomes das features
+    generate_all_graphics(
+        model=model_final, 
+        X_test=X_test, 
+        y_test=y_test, 
+        feature_names=FEATURE_COLS,
+        report_dir=GRAPHICS_DIR
+    )
 
 if __name__ == "__main__":
     main()
