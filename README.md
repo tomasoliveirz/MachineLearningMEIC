@@ -133,3 +133,12 @@ limpeza → engenharia de features → agregação por época → análise e rel
 --- 
 
 Observação: executar `make help` para referência rápida dos targets e usar `make venv` antes de correr os targets se ainda não criou o ambiente virtual.
+
+
+
+
+APRESENTACAO:
+PARTES QUE TIVEMOS DIFICULDADE:
+FOCAR EM 1 MODELO
+QUAO BOM ELE É COM COISAS QUE JA ACONTECERAM
+MELHOR MODELO MAIS ESTAVEL DO QUE MODELO INSTAVEL
