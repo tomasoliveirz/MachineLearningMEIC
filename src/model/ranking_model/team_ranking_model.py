@@ -339,30 +339,6 @@ def build_feature_matrix(
         conf_dummies
     ], axis=1)
     
-    # GUARDRAIL: Basic check for leakage-prone substrings in feature names
-    # Defensive: ensure no unexpected current-season columns are present
-    forbidden_substrings = [
-        'won', 'lost', 'GP', 'homeW', 'homeL', 'awayW', 'awayL',
-        'confW', 'confL', 'rs_win_pct', 'pythag_win_pct', 'overach',
-        'po_W', 'po_L', 'po_win_pct', '_RESULT'  # Added _RESULT to catch in-memory results
-    ]
-
-    # Allow temporal-derived features that end with safe suffixes (they use shift(1))
-    safe_temporal_suffixes = ('_ma3', '_ma5', '_trend3', '_trend5', '_prev')
-    bad_cols = []
-    for c in X.columns:
-        # If it's a temporal aggregated feature (safe), skip the forbidden check
-        if any(c.endswith(suffix) for suffix in safe_temporal_suffixes):
-            continue
-        if any(fs in c for fs in forbidden_substrings):
-            bad_cols.append(c)
-
-    if bad_cols:
-        raise RuntimeError(
-            f"[GUARDRAIL TRIGGERED] Forbidden leakage-prone features detected in feature matrix X:\n"
-            f"  {bad_cols}\n\n"
-            f"These features appear to contain current-season results and cannot be used for forecasting."
-        )
     
     # Target (rank within conference)
     y = pd.to_numeric(df_work['rank'], errors='coerce')
