@@ -128,9 +128,9 @@ def add_coach_career_features(df: pd.DataFrame) -> pd.DataFrame:
             lambda x: x.shift(1).rolling(window=3, min_periods=1).mean()
         ).fillna(0.0)
     
-    # Career win% (smoothed)
-    df['coach_career_rs_win_pct_ma3'] = df.groupby('coachID')[rs_col].transform(
-        lambda x: x.shift(1).rolling(window=3, min_periods=1).mean()
+    # Career win% (smoothed) - CHANGED TO 5 YEARS
+    df['coach_career_rs_win_pct_ma5'] = df.groupby('coachID')[rs_col].transform(
+        lambda x: x.shift(1).rolling(window=5, min_periods=1).mean()
     ).fillna(0.0)
     
     # Coach tenure (years with same team)
@@ -146,7 +146,7 @@ def add_coach_career_features(df: pd.DataFrame) -> pd.DataFrame:
     coach_features = [
         'coach_career_overach_pythag_ma3',
         'coach_career_overach_roster_ma3', 
-        'coach_career_rs_win_pct_ma3',
+        'coach_career_rs_win_pct_ma5',
         'coach_tenure_prev'
     ]
     existing_features = [f for f in coach_features if f in df.columns]
@@ -162,7 +162,11 @@ def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.sort_values(['tmID', 'year']).copy()
     
     # Columns to compute temporal features for
-    temporal_cols = ['point_diff', 'off_eff', 'def_eff', 'pythag_win_pct', 'team_strength']
+    # Columns to compute temporal features for
+    temporal_cols = [
+        'point_diff', 'off_eff', 'def_eff', 'pythag_win_pct', 'team_strength',
+        'to_diff', 'home_win_pct', 'away_win_pct'
+    ]
     
     # Ensure columns exist
     for col in temporal_cols:
@@ -170,6 +174,12 @@ def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = 0.0
         else:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            
+    # --- Add Conference Win % ---
+    if 'confW' in df.columns and 'confL' in df.columns:
+        df['conf_win_pct'] = df['confW'] / (df['confW'] + df['confL'])
+        df['conf_win_pct'] = df['conf_win_pct'].fillna(0.0)
+        temporal_cols.append('conf_win_pct')
     
     # Group by team
     for col in temporal_cols:
@@ -204,7 +214,13 @@ def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
                 lambda series: calculate_slope(series, 5), raw=False
             )
         )
-    
+        
+    # Lower std dev = more consistent
+    if 'season_win_pct' in df.columns:
+        df['win_pct_consistency'] = df.groupby('tmID')['season_win_pct'].transform(
+            lambda x: x.shift(1).rolling(window=5, min_periods=2).std()
+        ).fillna(0.0)
+
     # Fill NaN values with 0 (for teams with insufficient history)
     temporal_feature_cols = [
         f'{col}_{suffix}' 
@@ -213,7 +229,22 @@ def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     ]
     df[temporal_feature_cols] = df[temporal_feature_cols].fillna(0.0)
     
-    print(f"  ✓ Added {len(temporal_feature_cols)} temporal features")
+    df['rank_filled'] = df['rank'].fillna(15) # Assuming max rank is around 15
+    
+    # Previous Rank (Lag 1)
+    df['prev_rank_1'] = df.groupby('tmID')['rank_filled'].shift(1).fillna(15)
+    
+    # Rolling Average Rank (Lag 1, Window 3)
+    df['prev_rank_ma3'] = df.groupby('tmID')['rank_filled'].transform(
+        lambda x: x.shift(1).rolling(window=3, min_periods=1).mean()
+    ).fillna(15)
+    
+    # Rolling Average Rank (Lag 1, Window 5)
+    df['prev_rank_ma5'] = df.groupby('tmID')['rank_filled'].transform(
+        lambda x: x.shift(1).rolling(window=5, min_periods=1).mean()
+    ).fillna(15)
+    
+    print(f"  ✓ Added {len(temporal_feature_cols)} temporal features + 3 past rank features")
     
     return df
 
@@ -277,38 +308,7 @@ def build_feature_matrix(
     df: pd.DataFrame,
 ) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
     """Build feature matrix X, target y and meta (predictive-only, no leakage)."""
-    
-    # OLD features (before reduction to prevent overfitting)
-    Old = [
-        # Historical performance (from previous seasons only)
-        'prev_win_pct_1', 'prev_win_pct_3', 'prev_win_pct_5',
-        'prev_point_diff_3', 'prev_point_diff_5',
-        'win_pct_change',
-        
-        # Roster quality (can be estimated pre-season from player metrics)
-        'team_strength',
-        
-        # Rolling averages and trends (computed from past seasons with shift(1))
-        'point_diff_ma3', 'point_diff_ma5', 'point_diff_trend3', 'point_diff_trend5',
-        'off_eff_ma3', 'off_eff_ma5', 'off_eff_trend3', 'off_eff_trend5',
-        'def_eff_ma3', 'def_eff_ma5', 'def_eff_trend3', 'def_eff_trend5',
-        'pythag_win_pct_ma3', 'pythag_win_pct_ma5', 'pythag_win_pct_trend3', 'pythag_win_pct_trend5',
-        'team_strength_ma3', 'team_strength_ma5', 'team_strength_trend3', 'team_strength_trend5',
-        
-        # Structural context (not tied to game results)
-        'franchise_changed',
-        
-        # Coach career features (predictive, lagged)
-        'coach_career_overach_pythag_ma3',
-        'coach_career_overach_roster_ma3',
-        'coach_career_rs_win_pct_ma3',
-        'coach_tenure_prev',
-    ]
-    # New features (reduced set to prevent overfitting)
     feature_cols_numeric = [
-        # Core historical performance (most stable)
-        'prev_win_pct_3', 'prev_win_pct_5',
-        'prev_point_diff_5',
         
         # Key rolling averages (removed short-term MA3 to reduce noise)
         'point_diff_ma5', 'point_diff_trend5',
@@ -317,8 +317,15 @@ def build_feature_matrix(
         'team_strength_ma5',
         
         # Coach features (career averages only, most stable)
-        'coach_career_rs_win_pct_ma3',
+        'coach_career_rs_win_pct_ma5',
         'coach_tenure_prev',
+
+        # Rank
+        'prev_rank_1', 'prev_rank_ma3', 'prev_rank_ma5'
+
+        # Conference
+        'conf_win_pct_ma5',
+        'win_pct_consistency',
     ]    
 
     df_work = df.copy()
@@ -949,6 +956,18 @@ def run_team_ranking_model(
     train_with_ranks['split'] = 'train'
     test_with_ranks['split'] = 'test'
     save_predictions(train_with_ranks, test_with_ranks)
+
+    # Save feature importance
+    if hasattr(final_model, 'feature_importances_'):
+        print("\n[TeamRanking] Saving feature importance...")
+        feature_imp = pd.DataFrame({
+            'feature': X_train_final.columns,
+            'importance': final_model.feature_importances_
+        }).sort_values('importance', ascending=False)
+        
+        imp_path = PROC_DIR / "feature_importance.csv"
+        feature_imp.to_csv(imp_path, index=False)
+        print(f"  ✓ Saved feature importance to {imp_path}")
 
     save_report(
         max_train_year, best_params, best_cv_score,

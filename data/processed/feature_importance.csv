@@ -1,0 +1,16 @@
+feature,importance
+coach_career_rs_win_pct_ma5,0.22572732001917747
+team_strength_ma5,0.18138589367400584
+pythag_win_pct_ma5,0.17793287067897567
+off_eff_ma5,0.16257545548840005
+prev_rank_ma3,0.059662656251182854
+prev_rank_1,0.038536738973895014
+coach_tenure_prev,0.03764694209633859
+point_diff_ma5,0.03248626939637972
+pythag_win_pct_trend5,0.032198867109045376
+point_diff_trend5,0.02197651951809345
+def_eff_ma5,0.016668229415173295
+win_pct_consistency,0.013202237379332741
+prev_rank_ma5conf_win_pct_ma5,0.0
+conf_EA,0.0
+conf_WE,0.0

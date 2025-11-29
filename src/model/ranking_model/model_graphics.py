@@ -472,6 +472,49 @@ def plot_top_k_accuracy(df: pd.DataFrame, save_path: Optional[Path] = None) -> N
     
     print(f"  ✓ Saved: {save_path}")
 
+    print(f"  ✓ Saved: {save_path}")
+
+def plot_feature_importance(save_path: Optional[Path] = None) -> None:
+    """
+    Plot the top 20 most important features.
+    """
+    csv_path = PROC_DIR / "feature_importance.csv"
+    
+    if not csv_path.exists():
+        print("  ⚠ Feature importance file not found, skipping plot")
+        return
+        
+    df = pd.read_csv(csv_path)
+    
+    # Take top 20
+    df_top = df.head(20).sort_values('importance', ascending=True)
+    
+    fig, ax = plt.subplots(figsize=(10, 12))
+    
+    # Horizontal bar chart
+    bars = ax.barh(df_top['feature'], df_top['importance'], color='#2E86AB', alpha=0.8)
+    
+    ax.set_xlabel('Importance')
+    ax.set_title('Top 20 Feature Importance', fontweight='bold', pad=20)
+    ax.grid(True, alpha=0.3, axis='x')
+    
+    # Add value labels
+    for bar in bars:
+        width = bar.get_width()
+        ax.text(width, bar.get_y() + bar.get_height()/2, 
+                f'{width:.4f}', 
+                ha='left', va='center', fontsize=9, fontweight='bold', color='black')
+    
+    plt.tight_layout()
+    
+    if save_path is None:
+        save_path = GRAPHICS_DIR / "feature_importance.png"
+    
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"  ✓ Saved: {save_path}")
+
 def generate_all_graphics() -> None:
     """
     Main function to generate all graphics.
@@ -496,6 +539,7 @@ def generate_all_graphics() -> None:
         plot_year_conference_heatmap(df)
         plot_prediction_scatter(df)
         plot_top_k_accuracy(df)
+        plot_feature_importance()
         
         print("\n" + "=" * 80)
         print(f"✓ All graphics saved to: {GRAPHICS_DIR}")
