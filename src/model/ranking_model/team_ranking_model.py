@@ -321,7 +321,7 @@ def build_feature_matrix(
         'coach_tenure_prev',
 
         # Rank
-        'prev_rank_1', 'prev_rank_ma3', 'prev_rank_ma5'
+        'prev_rank_1', 'prev_rank_ma3', 'prev_rank_ma5',
 
         # Conference
         'conf_win_pct_ma5',
