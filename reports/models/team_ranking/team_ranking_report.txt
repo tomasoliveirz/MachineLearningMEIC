@@ -1,11 +1,11 @@
-GENERATED: 2025-11-29 15:33:19 UTC
+GENERATED: 2025-12-01 11:11:55 UTC
 MODE: PREDICTIVE WITH REGULARIZATION
 TRAIN_SEASONS: 1-6
 VAL_SEASONS: 7-8
 TEST_SEASONS: 9+
 
 ============================================================
-TRAIN METRICS
+TRAIN METRICS (AGGREGATED)
 ============================================================
 MAE_rank: 1.5826
 Mean_Spearman: 0.4516
@@ -13,37 +13,39 @@ Mean_NDCG@10: 0.9164
 n_groups: 16
 
 ============================================================
-VALIDATION METRICS
+VALIDATION METRICS (BY YEAR)
 ============================================================
-MAE_rank: 1.4231
-Mean_Spearman: 0.5071
-Mean_NDCG@10: 0.9024
-n_groups: 4
+
+Validation Year 7:
+  MAE_rank: 0.4286
+  Mean_Spearman: 0.9286
+  Mean_NDCG@10: 0.9927
+  n_groups: 2
+
+Validation Year 8:
+  MAE_rank: 1.8462
+  Mean_Spearman: 0.2464
+  Mean_NDCG@10: 0.8404
+  n_groups: 2
 
 ============================================================
-TEST METRICS
+TEST METRICS (BY YEAR)
 ============================================================
-MAE_rank: 1.5556
-Mean_Spearman: 0.4125
-Mean_NDCG@10: 0.9140
-n_groups: 4
 
-Top-K Accuracy (Test):
-  Top- 1: 25.00%
-  Top- 2: 50.00%
-  Top- 3: 25.00%
-  Top- 4: 0.00%
-  Top- 5: 0.00%
-  Top- 6: 50.00%
-  Top- 7: 75.00%
-  Top- 8: 0.00%
-  Top- 9: 0.00%
-  Top-10: 0.00%
+Test Year 9:
+  MAE_rank: 1.4286
+  Mean_Spearman: 0.4821
+  Mean_NDCG@10: 0.9327
+  n_groups: 2
 
-Overall_accuracy: 22.22% (6/27)
+Test Year 10:
+  MAE_rank: 1.6923
+  Mean_Spearman: 0.3429
+  Mean_NDCG@10: 0.8953
+  n_groups: 2
 
 ============================================================
 OVERFITTING DIAGNOSIS
 ============================================================
 Train-Test MAE gap: 0.0271
-Val-Test MAE gap: -0.1325
+Val-Test MAE gap: -0.4444

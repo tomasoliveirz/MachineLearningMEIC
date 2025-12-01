@@ -652,7 +652,7 @@ def save_report(
     report_name: str = "team_ranking_report_metrics.txt",
     strict_predictive: bool = True
 ) -> Path:
-    """Read saved CSV and write a comprehensive report with all metrics."""
+    """Read saved CSV and write a comprehensive report with metrics per year."""
     report_path = REPORTS_DIR / "team_ranking" / report_name
     csv_path = PROC_DIR / "team_ranking_predictions.csv"
 
@@ -668,96 +668,62 @@ def save_report(
         if col not in df_all.columns:
             raise ValueError(f"Coluna '{col}' não encontrada no CSV")
 
-    # Filtrar apenas dados de teste (split == 'test' e year > max_train_year)
-    df_test = df_all.loc[
-        (df_all["split"] == "test") &
-        (df_all["year"] > max_train_year)
-    ].copy()
-
-    if df_test.empty:
-        raise ValueError(f"Nenhum dado de teste encontrado para years > {max_train_year}")
-
     # Normalizar tipos
-    df_test["rank"] = pd.to_numeric(df_test["rank"], errors="coerce").astype('Int64')
-    df_test["pred_rank"] = pd.to_numeric(df_test["pred_rank"], errors="coerce").astype('Int64')
+    df_all["rank"] = pd.to_numeric(df_all["rank"], errors="coerce")
+    df_all["pred_rank"] = pd.to_numeric(df_all["pred_rank"], errors="coerce")
+
+    # Separar validação e teste
+    val_start_year = max_train_year - 1  # val_years = 2, então anos 7-8
+    df_val = df_all[(df_all["year"] >= val_start_year) & (df_all["year"] <= max_train_year)].copy()
+    df_test = df_all[df_all["year"] > max_train_year].copy()
 
     # ============================================================================
-    # CALCULAR MÉTRICAS
+    # CALCULAR MÉTRICAS POR ANO
     # ============================================================================
     
-    # MAE (Mean Absolute Error)
-    valid_mask = df_test["rank"].notna() & df_test["pred_rank"].notna()
-    if valid_mask.sum() > 0:
-        mae_rank = mean_absolute_error(
-            df_test.loc[valid_mask, "rank"].astype(int),
-            df_test.loc[valid_mask, "pred_rank"].astype(int)
-        )
-    else:
-        mae_rank = float("nan")
-
-    # Mean Spearman Correlation (por grupo year-confID)
-    spearman_corrs = []
-    ndcg_scores = []
-    for (year, conf), g in df_test.groupby(["year", "confID"]):
-        g = g.dropna(subset=["rank", "pred_rank"])
-        if len(g) <= 1:
-            continue
-        try:
-            corr, _ = spearmanr(g["rank"].astype(int), g["pred_rank"].astype(int))
-            if not np.isnan(corr):
-                spearman_corrs.append(corr)
-            
-            # NDCG@10
-            ndcg = calculate_ndcg_at_k(
-                g["rank"].values.astype(int),
-                g["pred_rank"].values.astype(int),
-                k=min(10, len(g))
-            )
-            if not np.isnan(ndcg):
-                ndcg_scores.append(ndcg)
-        except Exception:
-            continue
-    
-    mean_spearman = float(np.mean(spearman_corrs)) if spearman_corrs else float("nan")
-    mean_ndcg = float(np.mean(ndcg_scores)) if ndcg_scores else float("nan")
-
-    # Top-K Accuracy
-    total_groups = 0
-    top_k_correct = {k: 0 for k in range(1, 11)}
-    
-    for (year, conf), g in df_test.groupby(["year", "confID"]):
-        # Limpar dados inválidos
-        g = g.dropna(subset=["rank", "pred_rank"])
-        if len(g) == 0:
-            continue
+    def calculate_year_metrics(df_year):
+        """Calcula métricas para um ano específico."""
+        valid = df_year.dropna(subset=["rank", "pred_rank"])
+        if len(valid) == 0:
+            return {"mae_rank": float("nan"), "mean_spearman": float("nan"), 
+                    "mean_ndcg": float("nan"), "n_groups": 0}
         
-        total_groups += 1
+        # MAE
+        mae_rank = mean_absolute_error(valid["rank"], valid["pred_rank"])
         
-        # Converter ranks para inteiros
-        g = g.copy()
-        g["rank"] = g["rank"].astype(int)
-        g["pred_rank"] = g["pred_rank"].astype(int)
+        # Spearman e NDCG por grupo (year, confID)
+        spearman_corrs = []
+        ndcg_scores = []
+        n_groups = 0
         
-        # Para cada K de 1 a 10
-        for k in range(1, 11):
-            # Encontrar times verdadeiros nas top-K posições (ranks 1 a K)
-            true_top_k = set(g.loc[g["rank"] <= k, "tmID"].astype(str))
-            
-            # Encontrar times previstos nas top-K posições (pred_ranks 1 a K)
-            pred_top_k = set(g.loc[g["pred_rank"] <= k, "tmID"].astype(str))
-            
-            # Calcular interseção (acertos)
-            correct_in_top_k = len(true_top_k & pred_top_k)
-            
-            # Se todos os K times verdadeiros estão nos K previstos, é um acerto completo
-            if correct_in_top_k == k:
-                top_k_correct[k] += 1
-
-    # Calcular porcentagens
-    if total_groups == 0:
-        top_k_acc = {k: 0.0 for k in range(1, 11)}
-    else:
-        top_k_acc = {k: top_k_correct[k] / total_groups for k in range(1, 11)}
+        for (year, conf), g in valid.groupby(["year", "confID"]):
+            if len(g) <= 1:
+                continue
+            n_groups += 1
+            try:
+                corr, _ = spearmanr(g["rank"], g["pred_rank"])
+                if not np.isnan(corr):
+                    spearman_corrs.append(corr)
+                
+                ndcg = calculate_ndcg_at_k(
+                    g["rank"].values.astype(int),
+                    g["pred_rank"].values.astype(int),
+                    k=min(10, len(g))
+                )
+                if not np.isnan(ndcg):
+                    ndcg_scores.append(ndcg)
+            except Exception:
+                continue
+        
+        mean_spearman = float(np.mean(spearman_corrs)) if spearman_corrs else float("nan")
+        mean_ndcg = float(np.mean(ndcg_scores)) if ndcg_scores else float("nan")
+        
+        return {
+            "mae_rank": mae_rank,
+            "mean_spearman": mean_spearman,
+            "mean_ndcg": mean_ndcg,
+            "n_groups": n_groups
+        }
 
     # ============================================================================
     # SALVAR RELATÓRIO
@@ -773,53 +739,55 @@ def save_report(
         f.write(f"TEST_SEASONS: {max_train_year + 1}+\n\n")
         
         f.write("=" * 60 + "\n")
-        f.write("TRAIN METRICS\n")
+        f.write("TRAIN METRICS (AGGREGATED)\n")
         f.write("=" * 60 + "\n")
         f.write(f"MAE_rank: {train_metrics['mae_rank']:.4f}\n")
         f.write(f"Mean_Spearman: {train_metrics['mean_spearman']:.4f}\n")
         f.write(f"Mean_NDCG@10: {train_metrics.get('mean_ndcg', 0.0):.4f}\n")
         f.write(f"n_groups: {train_metrics['n_groups']}\n\n")
         
+        # VALIDATION METRICS - POR ANO
         f.write("=" * 60 + "\n")
-        f.write("VALIDATION METRICS\n")
+        f.write("VALIDATION METRICS (BY YEAR)\n")
         f.write("=" * 60 + "\n")
-        f.write(f"MAE_rank: {val_metrics['mae_rank']:.4f}\n")
-        f.write(f"Mean_Spearman: {val_metrics['mean_spearman']:.4f}\n")
-        f.write(f"Mean_NDCG@10: {val_metrics.get('mean_ndcg', 0.0):.4f}\n")
-        f.write(f"n_groups: {val_metrics['n_groups']}\n\n")
         
+        val_years = sorted(df_val["year"].unique())
+        for year in val_years:
+            df_year = df_val[df_val["year"] == year]
+            metrics = calculate_year_metrics(df_year)
+            f.write(f"\nValidation Year {int(year)}:\n")
+            f.write(f"  MAE_rank: {metrics['mae_rank']:.4f}\n")
+            f.write(f"  Mean_Spearman: {metrics['mean_spearman']:.4f}\n")
+            f.write(f"  Mean_NDCG@10: {metrics['mean_ndcg']:.4f}\n")
+            f.write(f"  n_groups: {metrics['n_groups']}\n")
+        
+        # TEST METRICS - POR ANO
+        f.write("\n" + "=" * 60 + "\n")
+        f.write("TEST METRICS (BY YEAR)\n")
         f.write("=" * 60 + "\n")
-        f.write("TEST METRICS\n")
-        f.write("=" * 60 + "\n")
-        f.write(f"MAE_rank: {mae_rank:.4f}\n")
-        f.write(f"Mean_Spearman: {mean_spearman:.4f}\n")
-        f.write(f"Mean_NDCG@10: {mean_ndcg:.4f}\n")
-        f.write(f"n_groups: {total_groups}\n\n")
         
-        f.write("Top-K Accuracy (Test):\n")
-        for k in range(1, 11):
-            f.write(f"  Top-{k:2d}: {top_k_acc[k]:.2%}\n")
+        test_years = sorted(df_test["year"].unique())
+        for year in test_years:
+            df_year = df_test[df_test["year"] == year]
+            metrics = calculate_year_metrics(df_year)
+            f.write(f"\nTest Year {int(year)}:\n")
+            f.write(f"  MAE_rank: {metrics['mae_rank']:.4f}\n")
+            f.write(f"  Mean_Spearman: {metrics['mean_spearman']:.4f}\n")
+            f.write(f"  Mean_NDCG@10: {metrics['mean_ndcg']:.4f}\n")
+            f.write(f"  n_groups: {metrics['n_groups']}\n")
         
-        # Overall accuracy
-        valid_rows = df_test[df_test['rank'].notna() & df_test['pred_rank'].notna()]
-        total_rows = len(valid_rows)
-        if total_rows > 0:
-            correct_rows = int((valid_rows['rank'].astype(int) == valid_rows['pred_rank'].astype(int)).sum())
-            overall_acc = correct_rows / total_rows
-        else:
-            correct_rows = 0
-            overall_acc = 0.0
-
-        f.write("\n")
-        f.write(f"Overall_accuracy: {overall_acc:.2%} ({correct_rows}/{total_rows})\n\n")
-        
-        # Overfitting diagnosis
-        train_test_gap = train_metrics['mae_rank'] - mae_rank
-        val_test_gap = val_metrics['mae_rank'] - mae_rank
-        
-        f.write("=" * 60 + "\n")
+        # OVERFITTING DIAGNOSIS
+        f.write("\n" + "=" * 60 + "\n")
         f.write("OVERFITTING DIAGNOSIS\n")
         f.write("=" * 60 + "\n")
+        
+        # Calcular métricas agregadas para validação e teste
+        val_agg = calculate_year_metrics(df_val)
+        test_agg = calculate_year_metrics(df_test)
+        
+        train_test_gap = train_metrics['mae_rank'] - test_agg['mae_rank']
+        val_test_gap = val_agg['mae_rank'] - test_agg['mae_rank']
+        
         f.write(f"Train-Test MAE gap: {train_test_gap:.4f}\n")
         f.write(f"Val-Test MAE gap: {val_test_gap:.4f}\n")
     
