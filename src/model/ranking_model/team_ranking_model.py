@@ -686,7 +686,8 @@ def save_report(
         valid = df_year.dropna(subset=["rank", "pred_rank"])
         if len(valid) == 0:
             return {"mae_rank": float("nan"), "mean_spearman": float("nan"), 
-                    "mean_ndcg": float("nan"), "n_groups": 0}
+                    "mean_ndcg": float("nan"), "n_groups": 0,
+                    "within_k_acc": {1: 0.0, 2: 0.0, 3: 0.0}}
         
         # MAE
         mae_rank = mean_absolute_error(valid["rank"], valid["pred_rank"])
@@ -695,6 +696,10 @@ def save_report(
         spearman_corrs = []
         ndcg_scores = []
         n_groups = 0
+        
+        # Within-k Accuracy
+        within_k_correct = {1: 0, 2: 0, 3: 0}
+        total_teams = 0
         
         for (year, conf), g in valid.groupby(["year", "confID"]):
             if len(g) <= 1:
@@ -712,17 +717,80 @@ def save_report(
                 )
                 if not np.isnan(ndcg):
                     ndcg_scores.append(ndcg)
+                
+                # Calculate within-k accuracy for this group
+                for _, row in g.iterrows():
+                    rank_diff = abs(row["rank"] - row["pred_rank"])
+                    total_teams += 1
+                    for k in [1, 2, 3]:
+                        if rank_diff <= k:
+                            within_k_correct[k] += 1
             except Exception:
                 continue
         
         mean_spearman = float(np.mean(spearman_corrs)) if spearman_corrs else float("nan")
         mean_ndcg = float(np.mean(ndcg_scores)) if ndcg_scores else float("nan")
         
+        # Calculate within-k accuracy percentages
+        within_k_acc = {k: (within_k_correct[k] / total_teams * 100) if total_teams > 0 else 0.0 
+                        for k in [1, 2, 3]}
+        
         return {
             "mae_rank": mae_rank,
             "mean_spearman": mean_spearman,
             "mean_ndcg": mean_ndcg,
-            "n_groups": n_groups
+            "n_groups": n_groups,
+            "within_k_acc": within_k_acc
+        }
+    
+    def calculate_conference_metrics(df_conf):
+        """Calcula métricas para uma conferência específica."""
+        valid = df_conf.dropna(subset=["rank", "pred_rank"])
+        if len(valid) == 0:
+            return {"mae_rank": float("nan"), "mean_spearman": float("nan"), 
+                    "mean_ndcg": float("nan"), "n_teams": 0,
+                    "within_k_acc": {1: 0.0, 2: 0.0, 3: 0.0}}
+        
+        # MAE
+        mae_rank = mean_absolute_error(valid["rank"], valid["pred_rank"])
+        
+        # Spearman
+        try:
+            corr, _ = spearmanr(valid["rank"], valid["pred_rank"])
+            mean_spearman = corr if not np.isnan(corr) else float("nan")
+        except Exception:
+            mean_spearman = float("nan")
+        
+        # NDCG
+        try:
+            ndcg = calculate_ndcg_at_k(
+                valid["rank"].values.astype(int),
+                valid["pred_rank"].values.astype(int),
+                k=min(10, len(valid))
+            )
+            mean_ndcg = ndcg if not np.isnan(ndcg) else float("nan")
+        except Exception:
+            mean_ndcg = float("nan")
+        
+        # Within-k Accuracy
+        within_k_correct = {1: 0, 2: 0, 3: 0}
+        total_teams = len(valid)
+        
+        for _, row in valid.iterrows():
+            rank_diff = abs(row["rank"] - row["pred_rank"])
+            for k in [1, 2, 3]:
+                if rank_diff <= k:
+                    within_k_correct[k] += 1
+        
+        within_k_acc = {k: (within_k_correct[k] / total_teams * 100) if total_teams > 0 else 0.0 
+                        for k in [1, 2, 3]}
+        
+        return {
+            "mae_rank": mae_rank,
+            "mean_spearman": mean_spearman,
+            "mean_ndcg": mean_ndcg,
+            "n_teams": total_teams,
+            "within_k_acc": within_k_acc
         }
 
     # ============================================================================
@@ -746,7 +814,7 @@ def save_report(
         f.write(f"Mean_NDCG@10: {train_metrics.get('mean_ndcg', 0.0):.4f}\n")
         f.write(f"n_groups: {train_metrics['n_groups']}\n\n")
         
-        # VALIDATION METRICS - POR ANO
+        # VALIDATION METRICS - POR ANO E CONFERÊNCIA
         f.write("=" * 60 + "\n")
         f.write("VALIDATION METRICS (BY YEAR)\n")
         f.write("=" * 60 + "\n")
@@ -759,9 +827,59 @@ def save_report(
             f.write(f"  MAE_rank: {metrics['mae_rank']:.4f}\n")
             f.write(f"  Mean_Spearman: {metrics['mean_spearman']:.4f}\n")
             f.write(f"  Mean_NDCG@10: {metrics['mean_ndcg']:.4f}\n")
+            f.write(f"  Within-1 Accuracy: {metrics['within_k_acc'][1]:.2f}%\n")
+            f.write(f"  Within-2 Accuracy: {metrics['within_k_acc'][2]:.2f}%\n")
+            f.write(f"  Within-3 Accuracy: {metrics['within_k_acc'][3]:.2f}%\n")
             f.write(f"  n_groups: {metrics['n_groups']}\n")
+            
+            # Métricas por conferência (lado a lado)
+            conferences = sorted(df_year["confID"].unique())
+            conf_data = {}
+            for conf in conferences:
+                df_conf = df_year[df_year["confID"] == conf]
+                conf_data[conf] = calculate_conference_metrics(df_conf)
+            
+            f.write(f"\n  {'Conference':<12} ")
+            for conf in conferences:
+                f.write(f"{conf:>12} ")
+            f.write("\n")
+            
+            f.write(f"  {'MAE_rank':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['mae_rank']:>12.4f} ")
+            f.write("\n")
+            
+            f.write(f"  {'Spearman':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['mean_spearman']:>12.4f} ")
+            f.write("\n")
+            
+            f.write(f"  {'NDCG@10':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['mean_ndcg']:>12.4f} ")
+            f.write("\n")
+            
+            f.write(f"  {'Within-1 Acc':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['within_k_acc'][1]:>11.2f}% ")
+            f.write("\n")
+            
+            f.write(f"  {'Within-2 Acc':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['within_k_acc'][2]:>11.2f}% ")
+            f.write("\n")
+            
+            f.write(f"  {'Within-3 Acc':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['within_k_acc'][3]:>11.2f}% ")
+            f.write("\n")
+            
+            f.write(f"  {'n_teams':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['n_teams']:>12} ")
+            f.write("\n")
         
-        # TEST METRICS - POR ANO
+        # TEST METRICS - POR ANO E CONFERÊNCIA
         f.write("\n" + "=" * 60 + "\n")
         f.write("TEST METRICS (BY YEAR)\n")
         f.write("=" * 60 + "\n")
@@ -774,7 +892,57 @@ def save_report(
             f.write(f"  MAE_rank: {metrics['mae_rank']:.4f}\n")
             f.write(f"  Mean_Spearman: {metrics['mean_spearman']:.4f}\n")
             f.write(f"  Mean_NDCG@10: {metrics['mean_ndcg']:.4f}\n")
+            f.write(f"  Within-1 Accuracy: {metrics['within_k_acc'][1]:.2f}%\n")
+            f.write(f"  Within-2 Accuracy: {metrics['within_k_acc'][2]:.2f}%\n")
+            f.write(f"  Within-3 Accuracy: {metrics['within_k_acc'][3]:.2f}%\n")
             f.write(f"  n_groups: {metrics['n_groups']}\n")
+            
+            # Métricas por conferência (lado a lado)
+            conferences = sorted(df_year["confID"].unique())
+            conf_data = {}
+            for conf in conferences:
+                df_conf = df_year[df_year["confID"] == conf]
+                conf_data[conf] = calculate_conference_metrics(df_conf)
+            
+            f.write(f"\n  {'Conference':<12} ")
+            for conf in conferences:
+                f.write(f"{conf:>12} ")
+            f.write("\n")
+            
+            f.write(f"  {'MAE_rank':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['mae_rank']:>12.4f} ")
+            f.write("\n")
+            
+            f.write(f"  {'Spearman':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['mean_spearman']:>12.4f} ")
+            f.write("\n")
+            
+            f.write(f"  {'NDCG@10':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['mean_ndcg']:>12.4f} ")
+            f.write("\n")
+            
+            f.write(f"  {'Within-1 Acc':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['within_k_acc'][1]:>11.2f}% ")
+            f.write("\n")
+            
+            f.write(f"  {'Within-2 Acc':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['within_k_acc'][2]:>11.2f}% ")
+            f.write("\n")
+            
+            f.write(f"  {'Within-3 Acc':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['within_k_acc'][3]:>11.2f}% ")
+            f.write("\n")
+            
+            f.write(f"  {'n_teams':<12} ")
+            for conf in conferences:
+                f.write(f"{conf_data[conf]['n_teams']:>12} ")
+            f.write("\n")
         
         # OVERFITTING DIAGNOSIS
         f.write("\n" + "=" * 60 + "\n")
