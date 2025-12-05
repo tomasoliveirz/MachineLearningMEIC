@@ -7,8 +7,12 @@ import numpy as np
 # ==============================================================================
 # CONFIGURAÇÃO DE CAMINHOS
 # ==============================================================================
-CSV_PATH = r"c:\Users\gluca\OneDrive\Ambiente de Trabalho\Master FEUP\MachineLearningMEIC\data\processed\coach_season_facts_performance.csv"
-GRAPH_DIR = r"c:\Users\gluca\OneDrive\Ambiente de Trabalho\Master FEUP\MachineLearningMEIC\data\processed\graphs\coache_performance"
+# Determine the project root directory (absolute path)
+# Assuming script is in src/graphs/, so we go up 3 levels to reach project root
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+CSV_PATH = os.path.join(BASE_DIR, "data", "processed", "coach_season_facts_performance.csv")
+GRAPH_DIR = os.path.join(BASE_DIR, "reports", "performance_graphs", "coach_performance")
 
 os.makedirs(GRAPH_DIR, exist_ok=True)
 

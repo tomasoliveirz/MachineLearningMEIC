@@ -3,15 +3,18 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 
+# Get the project root directory
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
 # Load the team performance data
-file_path = "c:\\Users\\gluca\\OneDrive\\Ambiente de Trabalho\\Master FEUP\\MachineLearningMEIC\\data\\processed\\team_performance.csv"
+file_path = BASE_DIR / "data" / "processed" / "team_performance.csv"
 df = pd.read_csv(file_path)
 
 # Set Seaborn style
 sns.set(style="whitegrid")
 
 # Create output directory for graphs
-output_dir = Path("c:\\Users\\gluca\\OneDrive\\Ambiente de Trabalho\\Master FEUP\\MachineLearningMEIC\\data\\processed\\graphs\\team_performance")
+output_dir = BASE_DIR / "reports" / "performance_graphs" / "team_performance"
 output_dir.mkdir(parents=True, exist_ok=True)
 
 # Function to plot win percentage over years for a specific team
