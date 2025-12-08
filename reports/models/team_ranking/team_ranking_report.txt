@@ -1,63 +1,81 @@
-GENERATED: 2025-12-02 14:14:11 UTC
+GENERATED: 2025-12-08 10:53:42 UTC
 MODE: PREDICTIVE WITH REGULARIZATION
-TRAIN_SEASONS: 1-6
-VAL_SEASONS: 7-8
-TEST_SEASONS: 9+
+TRAIN_SEASONS: 1-8
+VAL_SEASONS: 9-10
+TEST_SEASONS: 11+
 
 ============================================================
 TRAIN METRICS (AGGREGATED)
 ============================================================
-MAE_rank: 1.5826
-Mean_Spearman: 0.4516
-Mean_NDCG@10: 0.9164
-n_groups: 16
+MAE_rank: 1.6056
+Mean_Spearman: 0.4396
+Mean_NDCG@10: 0.9151
+n_groups: 20
 
 ============================================================
-VALIDATION METRICS
+VALIDATION METRICS (BY YEAR)
 ============================================================
 
-Validation Year 7:
-  Conference             EA           WE 
-  MAE_rank           0.5714       0.2857 
-  Spearman           0.8929       0.9643 
-  NDCG@10            0.9894       0.9960 
-  Within-1 Acc       85.71%      100.00% 
-  Within-3 Acc      100.00%      100.00% 
-  n_teams                 7            7 
+Validation Year 9:
+  MAE_rank: 1.4286
+  Mean_Spearman: 0.5000
+  Mean_NDCG@10: 0.9335
+  Within-1 Accuracy: 64.29%
+  Within-2 Accuracy: 78.57%
+  Within-3 Accuracy: 92.86%
+  n_groups: 2
 
-Validation Year 8:
-  Conference             EA           WE 
-  MAE_rank           1.3333       2.2857 
-  Spearman           0.6000      -0.1071 
-  NDCG@10            0.9174       0.7634 
-  Within-1 Acc       50.00%       42.86% 
-  Within-3 Acc      100.00%       71.43% 
-  n_teams                 6            7 
-
-============================================================
-TEST METRICS
-============================================================
-
-Test Year 9:
   Conference             EA           WE 
   MAE_rank           1.1429       1.7143 
-  Spearman           0.7857       0.1786 
-  NDCG@10            0.9651       0.9002 
+  Spearman           0.7143       0.2857 
+  NDCG@10            0.9571       0.9100 
   Within-1 Acc       71.43%       57.14% 
+  Within-2 Acc       85.71%       71.43% 
   Within-3 Acc      100.00%       85.71% 
   n_teams                 7            7 
 
-Test Year 10:
+Validation Year 10:
+  MAE_rank: 1.6923
+  Mean_Spearman: 0.4286
+  Mean_NDCG@10: 0.8884
+  Within-1 Accuracy: 46.15%
+  Within-2 Accuracy: 84.62%
+  Within-3 Accuracy: 92.31%
+  n_groups: 2
+
   Conference             EA           WE 
-  MAE_rank           2.5714       0.6667 
-  Spearman          -0.1429       0.8286 
-  NDCG@10            0.7992       0.9913 
-  Within-1 Acc       28.57%       83.33% 
-  Within-3 Acc       71.43%      100.00% 
+  MAE_rank           2.2857       1.0000 
+  Spearman           0.1429       0.7143 
+  NDCG@10            0.8149       0.9618 
+  Within-1 Acc       28.57%       66.67% 
+  Within-2 Acc       71.43%      100.00% 
+  Within-3 Acc       85.71%      100.00% 
   n_teams                 7            6 
+
+============================================================
+TEST METRICS (BY YEAR)
+============================================================
+
+Test Year 11:
+  MAE_rank: nan
+  Mean_Spearman: nan
+  Mean_NDCG@10: nan
+  Within-1 Accuracy: 0.00%
+  Within-2 Accuracy: 0.00%
+  Within-3 Accuracy: 0.00%
+  n_groups: 0
+
+  Conference             EA           WE 
+  MAE_rank              nan          nan 
+  Spearman              nan          nan 
+  NDCG@10               nan          nan 
+  Within-1 Acc        0.00%        0.00% 
+  Within-2 Acc        0.00%        0.00% 
+  Within-3 Acc        0.00%        0.00% 
+  n_teams                 0            0 
 
 ============================================================
 OVERFITTING DIAGNOSIS
 ============================================================
-Train-Test MAE gap: 0.0271
-Val-Test MAE gap: -0.4444
+Train-Test MAE gap: nan
+Val-Test MAE gap: nan

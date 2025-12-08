@@ -24,7 +24,64 @@ RANDOM_STATE = 42
 # 1. DATA LOADING AND VALIDATION
 # =============================================================================
 
-def load_and_merge() -> pd.DataFrame:
+def load_season_11_data(target_season: int) -> pd.DataFrame:
+    """
+    Load raw Season 11 data and create a skeleton DataFrame compatible with the model.
+    Fills missing performance metrics with NaN (to be handled by feature engineering).
+    """
+    print(f"[TeamRanking] Loading raw data for Target Season {target_season}...")
+    
+    s11_dir = ROOT / "data" / "raw" / f"Season_{target_season}"
+    teams_path = s11_dir / "teams.csv"
+    coaches_path = s11_dir / "coaches.csv"
+    
+    if not teams_path.exists():
+         # Fallback to current dir structure if Season_11 is not capitalised or non-standard structure
+         s11_dir = ROOT / "data" / "raw" / f"Season_{target_season}" # Try standard
+    
+    if not teams_path.exists():
+        raise FileNotFoundError(f"Could not find teams.csv for S{target_season} at {teams_path}")
+
+    # 1. Load Teams
+    df_teams = pd.read_csv(teams_path)
+    # Ensure required columns
+    req_cols = ['tmID', 'year', 'confID', 'name']
+    for c in req_cols:
+        if c not in df_teams.columns:
+             # Try to infer if possible or fail
+             pass
+    
+    df_s11 = df_teams.copy()
+    
+    # Ensure numeric year
+    df_s11['year'] = pd.to_numeric(df_s11['year'], errors='coerce')
+    
+    # Add rank placeholder (Target for S11 is unknown, but we need the column)
+    df_s11['rank'] = np.nan 
+    
+    dummy_cols = [
+        'point_diff', 'off_eff', 'def_eff', 'pythag_win_pct', 'team_strength',
+        'to_diff', 'home_win_pct', 'away_win_pct', 'confW', 'confL',
+        'season_win_pct', 'rs_win_pct_expected_roster', 'overach_roster', 'overach_pythag'
+    ]
+    for c in dummy_cols:
+        df_s11[c] = np.nan
+
+    # 2. Load Coaches (to link coach IDs)
+    if coaches_path.exists():
+        df_coaches = pd.read_csv(coaches_path)
+        df_coaches['year'] = pd.to_numeric(df_coaches['year'], errors='coerce')
+        df_coaches = df_coaches[df_coaches['year'] == target_season].copy()
+        algo_coaches = df_coaches.drop_duplicates(subset=['tmID'], keep='first')
+        
+        df_s11 = df_s11.merge(algo_coaches[['tmID', 'coachID']], on='tmID', how='left')
+    else:
+        df_s11['coachID'] = np.nan
+        
+    print(f"  ✓ Prepared Season {target_season} skeleton: {len(df_s11)} teams")
+    return df_s11
+
+def load_and_merge(target_season: int = None) -> pd.DataFrame:
     """Load and merge team season statistics with performance data."""
     print("[TeamRanking] Loading data...")
     
@@ -62,9 +119,28 @@ def load_and_merge() -> pd.DataFrame:
     if missing:
         raise KeyError(f"Missing required columns: {missing}")
     
-    # Remove rows without rank or confID
-    df_all = df_all.dropna(subset=['rank', 'confID'])
-    print(f"  ✓ After removing missing rank/confID: {len(df_all)} rows")
+    # Remove rows without rank or confID (BUT KEEP TARGET SEASON if rank is missing)
+    if target_season:
+        # Keep rows where rank is missing ONLY if it's the target season
+        keep_mask = (df_all['rank'].notna()) & (df_all['confID'].notna())
+        s11_mask = (df_all['year'] == target_season)
+        df_all = df_all[keep_mask | s11_mask].copy()
+        
+        # Load Season 11 Skeleton and concatenate
+        df_s11 = load_season_11_data(target_season)
+        
+        # Align columns
+        common_cols = df_all.columns.intersection(df_s11.columns)
+        
+        # We want to append S11 to df_all.
+        # df_all has computed stats for previous years. df_s11 has NaNs.
+        df_all = pd.concat([df_all, df_s11], axis=0, ignore_index=True)
+        
+    else:
+        # Standard cleaning
+        df_all = df_all.dropna(subset=['rank', 'confID'])
+
+    print(f"  ✓ After merge/cleaning: {len(df_all)} rows (inc. target season)")
     
     return df_all
 
@@ -593,7 +669,7 @@ def evaluate(df_with_ranks: pd.DataFrame, split_name: str) -> Dict:
 
 
 # =============================================================================
-# SAVE OUTPUTS (corrigido) + RELATÓRIO CONSISTENTE LENDO O CSV (fonte da verdade)
+# SAVE OUTPUTS 
 # =============================================================================
 
 
@@ -601,7 +677,7 @@ def save_predictions(train_df: pd.DataFrame, test_df: pd.DataFrame) -> Path:
     """Save predictions to CSV with consistent columns and types."""
     print("\n[TeamRanking] Saving predictions to CSV...")
 
-    # copy pra não poluir objetos externos
+    # Copy to avoid modifying external objects
     train = train_df.copy()
     test = test_df.copy()
 
@@ -610,26 +686,25 @@ def save_predictions(train_df: pd.DataFrame, test_df: pd.DataFrame) -> Path:
 
     df_all = pd.concat([train, test], ignore_index=True)
 
-    # colunas obrigatórias na ordem desejada
+    # Mandatory columns in desired order
     out_cols = ["year", "confID", "tmID", "name", "rank", "pred_rank", "pred_score", "split"]
     for c in out_cols:
         if c not in df_all.columns:
             df_all[c] = np.nan
 
-    # normaliza tipos: ranks inteiros se possível, scores floats
-    def safe_to_int(series):
-        try:
-            return series.astype(float).round().astype(int)
-        except Exception:
-            # se falhar, retorna NaNs
-            return pd.Series([np.nan] * len(series))
+    # Normalize types: integer ranks if possible, float scores
+    columns_to_fix = ["rank", "pred_rank"]
+    
+    for col in columns_to_fix:
+        if col in df_all.columns:
+            # Coerce to numeric first
+            s = pd.to_numeric(df_all[col], errors='coerce')
+            # Round and convert to nullable integer
+            df_all[col] = s.round().astype('Int64')
 
-    df_all["rank"] = safe_to_int(df_all["rank"])
-    # pred_rank pode já existir; mantenha como inteiro quando possível
-    df_all["pred_rank"] = safe_to_int(df_all["pred_rank"])
     df_all["pred_score"] = pd.to_numeric(df_all["pred_score"], errors="coerce")
 
-    # ordenar de forma estável: year, confID, pred_rank (nulos no final)
+    # Stable sort: year, confID, pred_rank (nulls at the end)
     df_all = df_all[out_cols].sort_values(
         ["year", "confID", "pred_rank"], na_position="last", ignore_index=True
     )
@@ -656,33 +731,33 @@ def save_report(
     report_path = REPORTS_DIR / "team_ranking" / report_name
     csv_path = PROC_DIR / "team_ranking_predictions.csv"
 
-    # Ler CSV salvo (fonte da verdade)
+    # Read saved CSV (source of truth)
     if not csv_path.exists():
-        raise FileNotFoundError(f"CSV não encontrado: {csv_path}")
+        raise FileNotFoundError(f"CSV not found: {csv_path}")
     
     df_all = pd.read_csv(csv_path, encoding="utf-8")
     
-    # Validar colunas necessárias
+    # Validate required columns
     required_cols = ["year", "confID", "tmID", "name", "rank", "pred_rank", "split"]
     for col in required_cols:
         if col not in df_all.columns:
-            raise ValueError(f"Coluna '{col}' não encontrada no CSV")
+            raise ValueError(f"Column '{col}' not found in CSV")
 
-    # Normalizar tipos
+    # Normalize types
     df_all["rank"] = pd.to_numeric(df_all["rank"], errors="coerce")
     df_all["pred_rank"] = pd.to_numeric(df_all["pred_rank"], errors="coerce")
 
-    # Separar validação e teste
-    val_start_year = max_train_year - 1  # val_years = 2, então anos 7-8
+    # Split validation and test
+    val_start_year = max_train_year - 1  # val_years = 2, so years 7-8
     df_val = df_all[(df_all["year"] >= val_start_year) & (df_all["year"] <= max_train_year)].copy()
     df_test = df_all[df_all["year"] > max_train_year].copy()
 
     # ============================================================================
-    # CALCULAR MÉTRICAS POR ANO
+    # CALCULATE METRICS BY YEAR
     # ============================================================================
     
     def calculate_year_metrics(df_year):
-        """Calcula métricas para um ano específico."""
+        """Calculate metrics for a specific year."""
         valid = df_year.dropna(subset=["rank", "pred_rank"])
         if len(valid) == 0:
             return {"mae_rank": float("nan"), "mean_spearman": float("nan"), 
@@ -692,7 +767,7 @@ def save_report(
         # MAE
         mae_rank = mean_absolute_error(valid["rank"], valid["pred_rank"])
         
-        # Spearman e NDCG por grupo (year, confID)
+        # Spearman and NDCG by group (year, confID)
         spearman_corrs = []
         ndcg_scores = []
         n_groups = 0
@@ -744,7 +819,7 @@ def save_report(
         }
     
     def calculate_conference_metrics(df_conf):
-        """Calcula métricas para uma conferência específica."""
+        """Calculate metrics for a specific conference."""
         valid = df_conf.dropna(subset=["rank", "pred_rank"])
         if len(valid) == 0:
             return {"mae_rank": float("nan"), "mean_spearman": float("nan"), 
@@ -794,7 +869,7 @@ def save_report(
         }
 
     # ============================================================================
-    # SALVAR RELATÓRIO
+    # SAVE REPORT
     # ============================================================================
     
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -814,7 +889,7 @@ def save_report(
         f.write(f"Mean_NDCG@10: {train_metrics.get('mean_ndcg', 0.0):.4f}\n")
         f.write(f"n_groups: {train_metrics['n_groups']}\n\n")
         
-        # VALIDATION METRICS - POR ANO E CONFERÊNCIA
+        # VALIDATION METRICS - BY YEAR AND CONFERENCE
         f.write("=" * 60 + "\n")
         f.write("VALIDATION METRICS (BY YEAR)\n")
         f.write("=" * 60 + "\n")
@@ -832,7 +907,7 @@ def save_report(
             f.write(f"  Within-3 Accuracy: {metrics['within_k_acc'][3]:.2f}%\n")
             f.write(f"  n_groups: {metrics['n_groups']}\n")
             
-            # Métricas por conferência (lado a lado)
+            # Metrics by conference (side by side)
             conferences = sorted(df_year["confID"].unique())
             conf_data = {}
             for conf in conferences:
@@ -879,7 +954,7 @@ def save_report(
                 f.write(f"{conf_data[conf]['n_teams']:>12} ")
             f.write("\n")
         
-        # TEST METRICS - POR ANO E CONFERÊNCIA
+        # TEST METRICS - BY YEAR AND CONFERENCE
         f.write("\n" + "=" * 60 + "\n")
         f.write("TEST METRICS (BY YEAR)\n")
         f.write("=" * 60 + "\n")
@@ -897,7 +972,7 @@ def save_report(
             f.write(f"  Within-3 Accuracy: {metrics['within_k_acc'][3]:.2f}%\n")
             f.write(f"  n_groups: {metrics['n_groups']}\n")
             
-            # Métricas por conferência (lado a lado)
+            # Metrics by conference (side by side)
             conferences = sorted(df_year["confID"].unique())
             conf_data = {}
             for conf in conferences:
@@ -949,7 +1024,7 @@ def save_report(
         f.write("OVERFITTING DIAGNOSIS\n")
         f.write("=" * 60 + "\n")
         
-        # Calcular métricas agregadas para validação e teste
+        # Calculate aggregated metrics for validation and test
         val_agg = calculate_year_metrics(df_val)
         test_agg = calculate_year_metrics(df_test)
         
@@ -970,21 +1045,22 @@ def run_team_ranking_model(
     max_train_year: int = 8,
     val_years: int = 2,
     report_name: str = "team_ranking_report_enhanced.txt",
-    generate_graphics: bool = True
+    generate_graphics: bool = True,
+    target_season: int = None
 ) -> None:
     """Main predictive pipeline with validation set and strong regularization."""
     print("\n" + "=" * 80)
-    print("TEAM RANKING MODEL")
+    print(f"TEAM RANKING MODEL (Target Season: {target_season if target_season else 'None'})")
     print("=" * 80)
     
     # 1. Load and merge data
-    df_all = load_and_merge()
+    df_all = load_and_merge(target_season=target_season)
     
     # 2. Add temporal features
     df_all = add_temporal_features(df_all)
     
     # 2B. Add coach career features 
-    coach_perf_path = PROC_DIR / "coach_season_facts_performance.csv"
+    coach_perf_path = PROC_DIR / "coach_season_performance.csv" # Fixed path filename
     if coach_perf_path.exists():
         print("\n[TeamRanking] Loading coach performance data...")
         df_coaches = pd.read_csv(coach_perf_path)
@@ -1000,14 +1076,25 @@ def run_team_ranking_model(
             'is_first_year_with_team': 'max',  # 1 if any coach is in first year
             'gp': 'sum'  # Total games
         }).reset_index()
-        
-        # Merge coach data (now unique per team-year)
+                
+        cols_to_merge = ['team_id', 'year', 'rs_win_pct_coach', 'eb_rs_win_pct', 'is_first_year_with_team']
+        if 'coachID' not in df_all.columns:
+             cols_to_merge.append('coachID')
+
         df_all = df_all.merge(
-            coach_agg[['team_id', 'year', 'coachID', 'rs_win_pct_coach', 
-                       'eb_rs_win_pct', 'is_first_year_with_team']],
+            coach_agg[cols_to_merge],
             on=['team_id', 'year'],
-            how='left'
+            how='left',
+            suffixes=('', '_new')
         )
+        
+        if 'coachID_new' in df_all.columns:
+            if 'coachID' in df_all.columns:
+                df_all['coachID'] = df_all['coachID'].fillna(df_all['coachID_new'])
+            else:
+                df_all['coachID'] = df_all['coachID_new']
+            df_all = df_all.drop(columns=['coachID_new'])
+
         print(f"  ✓ Merged coach data: {df_all['coachID'].notna().sum()} teams with coaches")
         
         # Add coach career features
@@ -1083,10 +1170,21 @@ def run_team_ranking_model(
     test_with_ranks = add_predicted_rank(meta_test_final, y_pred_test)
 
     # Evaluate
-    print("\n[TeamRanking] Evaluating final model on train_final and test_final...")
+    print("\n[TeamRanking] Evaluating final model with extended logic...")
+    # Train Eval
     train_metrics = evaluate(train_with_ranks, "TRAIN")
     val_metrics = agg_val_metrics
-    test_metrics = evaluate(test_with_ranks, "TEST")
+    
+    # Test Eval - ONLY if valid ranks exist. If prediction mode (rank is NaN), skip eval.
+    if target_season is not None and target_season in test_with_ranks['year'].values:
+        print(f"  [Notice] Skipping Test metrics strictly for Target Season {target_season} (Ground truth unknown)")
+        valid_test = test_with_ranks.dropna(subset=['rank'])
+        if len(valid_test) > 0:
+             test_metrics = evaluate(valid_test, "TEST_PARTIAL")
+        else:
+             test_metrics = {'mae_rank': float('nan'), 'mean_spearman': 0.0, 'mean_ndcg': 0.0, 'n_groups': 0}
+    else:
+        test_metrics = evaluate(test_with_ranks, "TEST")
 
     # Save outputs
     train_with_ranks['split'] = 'train'
@@ -1115,7 +1213,10 @@ def run_team_ranking_model(
     # 11. Generate graphics
     print("\n[TeamRanking] Generating visualizations...")
     if generate_graphics:
-        generate_all_graphics()
+        try:
+             generate_all_graphics()
+        except Exception as e:
+             print(f"  ⚠ Graphics generation failed: {e}")
 
 
 # =============================================================================
@@ -1123,17 +1224,29 @@ def run_team_ranking_model(
 # =============================================================================
 
 if __name__ == "__main__":
-    # ======== Configurations ========
-    MAX_TRAIN_YEAR = 8                 # Last year for training+validation
-    VAL_YEARS = 2                      # Years reserved for validation (e.g., 7-8)
-    REPORT_NAME = "team_ranking_report.txt"  # Output report filename
-    GRAFICS = True                     # Whether to generate graphics
+    import argparse
+    parser = argparse.ArgumentParser(description="Team Ranking Prediction Model")
+    parser.add_argument("target_season", nargs='?', type=int, default=None, 
+                        help="Target Season to predict (e.g., 11). If set, trains on 1..N-1 and predicts N.")
     
-    # This script runs the predictive (pre-season, no-leakage) model
-    # with strong regularization to prevent overfitting
+    args = parser.parse_args()
+
+    # ======== Configurations ========
+    MAX_TRAIN_YEAR = 8                 # Default
+    VAL_YEARS = 2                      
+    REPORT_NAME = "team_ranking_report.txt"
+    GRAFICS = True            
+
+    if args.target_season:
+        # If target is 11, we train on 1..10.
+        MAX_TRAIN_YEAR = args.target_season - 1
+        GRAFICS = False
+        print(f"CLI: Target Season {args.target_season} detected. Training on 1-{MAX_TRAIN_YEAR}, Predicting {args.target_season}.")
+    
     run_team_ranking_model(
         max_train_year=MAX_TRAIN_YEAR,
         val_years=VAL_YEARS,
         report_name=REPORT_NAME,
-        generate_graphics=GRAFICS
+        generate_graphics=GRAFICS,
+        target_season=args.target_season
     )
