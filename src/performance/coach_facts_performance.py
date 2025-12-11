@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Coach Season Performance Analysis (Stint-aware)
 ================================================
@@ -10,9 +8,6 @@ Columns per coach-team-season (respecting stint):
 - eb_rs_win_pct (Empirical Bayes smoothing)
 - is_first_year_with_team
 - po_win_pct_coach (if post_wins/post_losses exist)
-
-NOTE: This script only saves RAW FACTS (wins, losses).
-      The model (team_ranking_model.py) will compute predictive features.
 """
 
 from pathlib import Path

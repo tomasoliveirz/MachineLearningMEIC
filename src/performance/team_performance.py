@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Team Performance Analysis (Season-level)
 =========================================
@@ -194,11 +192,7 @@ def compute_overachieves(df: pd.DataFrame, max_train_year: int | None = None) ->
                        to avoid temporal leakage. Predictions are made for all years.
                        This is critical for predictive models to ensure test data
                        doesn't influence the regression coefficients.
-    
-    TODO (Future work): Consider using Ridge(alpha=1.0) instead of LinearRegression
-    to stabilize coefficients with small sample sizes (~142 team-seasons).
-    This would make rs_win_pct_expected_roster more robust and reduce variance
-    in overach_roster metric. See FUTURE_IMPROVEMENTS.md for details.
+
     """
     # Fit linear regression: rs_win_pct ~ team_strength
     # If max_train_year is specified, only fit on training years to avoid temporal leakage
@@ -215,9 +209,6 @@ def compute_overachieves(df: pd.DataFrame, max_train_year: int | None = None) ->
     
     if len(valid) > 1:
         from sklearn.linear_model import LinearRegression
-        # TODO: Replace with Ridge for better stability:
-        # from sklearn.linear_model import Ridge
-        # model = Ridge(alpha=1.0)
         X = valid[['team_strength']].values
         y = valid['rs_win_pct'].values
         
@@ -304,26 +295,23 @@ def main(max_train_year: int | None = None):
     df = compute_overachieves(df, max_train_year=max_train_year)
     
     # Select canonical columns
-    # CLASSIFICATION FOR PREDICTIVE MODELING:
-    #   - predictive-safe: Can be used as features for forecasting (known pre-season or from past)
-    #   - descriptive-only: Contains current-season results (cannot be used for forecasting)
     canonical_cols = [
-        'team_id',                       # predictive-safe (identifier)
-        'year',                          # predictive-safe (identifier)
-        'GP',                            # descriptive-only (current season games played)
-        'won',                           # descriptive-only (current season wins)
-        'lost',                          # descriptive-only (current season losses)
-        'rs_win_pct',                    # descriptive-only (won/GP of current season)
-        'pythag_win_pct',                # descriptive-only (uses current season o_pts/d_pts)
-        'team_strength',                 # predictive-safe (roster quality, derived from player stats)
-        'rs_win_pct_expected_roster',    # descriptive-only (regression uses rs_win_pct)
-        'overach_pythag',                # descriptive-only (rs_win_pct - pythag_win_pct)
-        'overach_roster',                # descriptive-only (rs_win_pct - rs_win_pct_expected_roster)
-        'po_W',                          # descriptive-only (playoff wins)
-        'po_L',                          # descriptive-only (playoff losses)
-        'po_win_pct',                    # descriptive-only (playoff win rate)
-        'rs_win_pct_prev',               # predictive-safe (previous season win rate)
-        'win_pct_change'                 # predictive-safe (change from previous season)
+        'team_id',                       
+        'year',                          
+        'GP',                            
+        'won',                           
+        'lost',                          
+        'rs_win_pct',                    
+        'pythag_win_pct',                
+        'team_strength',                 
+        'rs_win_pct_expected_roster',    
+        'overach_pythag',                
+        'overach_roster',                
+        'po_W',                          
+        'po_L',                          
+        'po_win_pct',                    
+        'rs_win_pct_prev',               
+        'win_pct_change'                 
     ]
     
     # Keep only columns that exist

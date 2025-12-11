@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Preflight-calibrated parameters for player performance model.
 
@@ -10,7 +7,6 @@ and should be used consistently across:
   - src/features/rookies.py
   - Any other player performance modeling
 
-To recalibrate, run: make preflight
 """
 
 from dataclasses import dataclass

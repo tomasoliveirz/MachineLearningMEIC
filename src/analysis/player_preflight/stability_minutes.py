@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Per-36 stability analysis and rookie minutes threshold calibration.
 """

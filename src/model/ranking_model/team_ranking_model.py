@@ -37,7 +37,7 @@ def load_season_11_data(target_season: int) -> pd.DataFrame:
     
     if not teams_path.exists():
          # Fallback to current dir structure if Season_11 is not capitalised or non-standard structure
-         s11_dir = ROOT / "data" / "raw" / f"Season_{target_season}" # Try standard
+         s11_dir = ROOT / "data" / "raw" / f"Season_{target_season}" 
     
     if not teams_path.exists():
         raise FileNotFoundError(f"Could not find teams.csv for S{target_season} at {teams_path}")
@@ -48,7 +48,6 @@ def load_season_11_data(target_season: int) -> pd.DataFrame:
     req_cols = ['tmID', 'year', 'confID', 'name']
     for c in req_cols:
         if c not in df_teams.columns:
-             # Try to infer if possible or fail
              pass
     
     df_s11 = df_teams.copy()
@@ -119,7 +118,7 @@ def load_and_merge(target_season: int = None) -> pd.DataFrame:
     if missing:
         raise KeyError(f"Missing required columns: {missing}")
     
-    # Remove rows without rank or confID (BUT KEEP TARGET SEASON if rank is missing)
+    # Remove rows without rank or confID (
     if target_season:
         # Keep rows where rank is missing ONLY if it's the target season
         keep_mask = (df_all['rank'].notna()) & (df_all['confID'].notna())
@@ -204,7 +203,7 @@ def add_coach_career_features(df: pd.DataFrame) -> pd.DataFrame:
             lambda x: x.shift(1).rolling(window=3, min_periods=1).mean()
         ).fillna(0.0)
     
-    # Career win% (smoothed) - CHANGED TO 5 YEARS
+    # Career win% (smoothed) 
     df['coach_career_rs_win_pct_ma5'] = df.groupby('coachID')[rs_col].transform(
         lambda x: x.shift(1).rolling(window=5, min_periods=1).mean()
     ).fillna(0.0)
@@ -237,7 +236,6 @@ def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     
     df = df.sort_values(['tmID', 'year']).copy()
     
-    # Columns to compute temporal features for
     # Columns to compute temporal features for
     temporal_cols = [
         'point_diff', 'off_eff', 'def_eff', 'pythag_win_pct', 'team_strength',
@@ -472,7 +470,7 @@ def generate_pairwise_data(
                 pos_i = X_index.index(idx_i)
                 pos_j = X_index.index(idx_j)
                 
-                # Always create pair as (i, j) with appropriate label
+                # Always create pair as (i, j) 
                 X_pair = X_np[pos_i] - X_np[pos_j]
                 
                 # Label: 1 if team i is better (lower rank), 0 if team j is better
@@ -513,7 +511,7 @@ def predict_ranks_pairwise(
     
     scores = np.zeros(len(df_work))
     
-    # Convert X to numpy for numeric operations (reset index to match df_work)
+    # Convert X to numpy for numeric operations 
     X_reset = X.reset_index(drop=True)
     X_np = X_reset.values.astype(float)
     
@@ -547,22 +545,19 @@ def predict_ranks_pairwise(
 
 def create_pairwise_model() -> GradientBoostingClassifier:
     return GradientBoostingClassifier(
-        n_estimators=200,          # Number of boosting stages (trees). More trees can capture more complexity but increase risk of overfitting and training time.
-        learning_rate=0.03,        # Shrinkage applied to each tree's contribution. Smaller values improve generalization but require more trees.
-        max_depth=2,               # Max tree depth. Low depth (very shallow trees) constrains model complexity and helps prevent overfitting.
-        min_samples_split=30,      # Minimum samples required to split an internal node. Larger values avoid splits on small, noisy subsets.
-        min_samples_leaf=15,       # Minimum samples required to be at a leaf node. Ensures leaf predictions are based on enough data for stability.
-        subsample=0.7,             # Fraction of samples used per tree (stochastic boosting). Values <1.0 reduce variance and improve robustness.
-        max_features='sqrt',       # Number of features to consider when looking for best split ('sqrt' reduces correlation between trees).
-        random_state=RANDOM_STATE, # Seed for reproducible results (controls randomness in subsampling and feature selection).
-        validation_fraction=0.15,  # Fraction of training data reserved internally for early stopping evaluation.
-        n_iter_no_change=15,       # Stop if validation score does not improve for this many iterations (early stopping patience).
-        tol=1e-3                   # Minimum relative improvement to qualify as an actual improvement for early stopping.
+        n_estimators=200,
+        learning_rate=0.03,
+        max_depth=2,
+        min_samples_split=30,
+        min_samples_leaf=15,
+        subsample=0.7,
+        max_features='sqrt',
+        random_state=RANDOM_STATE,
+        validation_fraction=0.15,
+        n_iter_no_change=15,
+        tol=1e-3
     )
 
-# =============================================================================
-# 7. RANKING CONVERSION (score → rank within conference)
-# =============================================================================
 
 def add_predicted_rank(meta_df: pd.DataFrame, y_pred: np.ndarray) -> pd.DataFrame:
     """Attach predicted score and compute rank within (year, confID)."""
@@ -620,7 +615,7 @@ def evaluate(df_with_ranks: pd.DataFrame, split_name: str) -> Dict:
     # Per-group metrics
     spearman_corrs = []
     ndcg_scores = []
-    top_k_correct = {k: 0 for k in range(1, 11)}  # top-1 to top-10
+    top_k_correct = {k: 0 for k in range(1, 11)}  
     total_groups = 0
     
     for (year, conf), group in df_with_ranks.groupby(['year', 'confID']):
@@ -1222,7 +1217,7 @@ def run_team_ranking_model(
 # =============================================================================
 # 12. CLI ENTRY POINT
 # =============================================================================
-
+# python team_ranking_model.py 11 - para treinar de 1-10 e prever 11
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Team Ranking Prediction Model")
@@ -1232,7 +1227,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # ======== Configurations ========
-    MAX_TRAIN_YEAR = 8                 # Default
+    MAX_TRAIN_YEAR = 8                
     VAL_YEARS = 2                      
     REPORT_NAME = "team_ranking_report.txt"
     GRAFICS = True            

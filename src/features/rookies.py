@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 from pathlib import Path
 import sys
 import pandas as pd
@@ -63,7 +60,6 @@ def _label_rookies(players_teams: pd.DataFrame) -> pd.DataFrame:
     return df, rookie_year.reset_index()
 
 # detect player origin (ncaa vs non-ncaa) based on college info
-# (Now uses imported function from utils.players)
 _rookie_origin = infer_rookie_origin
 
 # build team-level rookie metrics (minutes, points, shares)

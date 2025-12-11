@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Temporal dependence analysis: seasons_back and decay parameter calibration.
 """

@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Survival bias analysis and inverse probability weighting (IPW).
 """
@@ -91,7 +88,7 @@ def write_survival_weights(df: pd.DataFrame, out_csv: Path, out_meta: Path) -> N
     high_weights = avg[avg["ipw_weight"] > 4.0]
     
     if max_weight > 4.0:
-        warnings.append(f"⚠️  Maximum IPW weight = {max_weight:.2f}")
+        warnings.append(f"  Maximum IPW weight = {max_weight:.2f}")
         warnings.append(f"   {len(high_weights)} year(s) have weights > 4.0:")
         for _, row in high_weights.iterrows():
             warnings.append(f"   - k={int(row['k'])}: P={row['p_survival']:.3f}, weight={row['ipw_weight']:.2f}")

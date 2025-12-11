@@ -13,7 +13,6 @@ def create_and_save_graph(csv_path):
     df = pd.read_csv(csv_path)
 
     # Diretório para salvar o gráfico
-    # Assuming script is in src/graphs, go up to project root
     BASE_DIR = Path(__file__).resolve().parent.parent.parent
     output_dir = BASE_DIR / "reports" / "performance_graphs" / "players_performance"
     output_dir.mkdir(parents=True, exist_ok=True)

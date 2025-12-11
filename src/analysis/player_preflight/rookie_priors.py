@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Rookie prior calibration: shrinkage strength and team vs global priors.
 """

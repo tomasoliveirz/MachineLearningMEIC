@@ -1,5 +1,3 @@
-# src/analysis/rookie_development_plots.py
-# -*- coding: utf-8 -*-
 """
 plots-first rookie development (experience-based, no ages)
 

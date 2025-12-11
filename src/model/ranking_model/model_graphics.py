@@ -158,7 +158,7 @@ def plot_metrics_by_year(df: pd.DataFrame, save_path: Optional[Path] = None) -> 
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
     
-    print(f"  ✓ Saved: {save_path}")
+    print(f"  Saved: {save_path}")
 
 def plot_train_vs_test_comparison(df: pd.DataFrame, save_path: Optional[Path] = None) -> None:
     """

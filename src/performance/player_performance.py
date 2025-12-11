@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 Calculate player performance using position-specific weights applied to per-36 stats.
@@ -173,49 +171,6 @@ def calculate_player_performance(
       2. (If normalize_per36=True) Converting raw stats to per-36-minute rates
       3. Applying weights to stats: performance = Σ(weight_i × stat_i)
       4. For low-minute players (< min_minutes), replacing with team/position means
-    
-    TODO (Future work): Recalibrate position weights with temporal validation
-    Current weights_positions.json may have been fit on all data. For better 
-    generalization, consider:
-      - Split by odd/even seasons
-      - Fit weights on even seasons, validate on odd seasons
-      - Prune stats with |weight| < 0.05 or unstable across positions
-    See FUTURE_IMPROVEMENTS.md section 2.1 for details.
-    
-    Args:
-        df: DataFrame with required columns:
-            - tmID: team identifier
-            - year: season year
-            - position: player position (must match keys in weights JSON)
-            - minutes: minutes played
-            - stat columns referenced in weights JSON (e.g., points, rebounds, etc.)
-        weights_path: Path to JSON file with position-specific stat weights
-        min_minutes: Minimum minutes threshold; players below this get fallback values
-        fallback: Fallback method (only "team_position_mean" supported)
-        normalize_per36: If True, convert stats to per-36 rates before applying weights.
-                        If False, apply weights directly to raw totals.
-        perf_col: Name of output performance column
-    
-    Returns:
-        DataFrame with added performance column
-        
-    Example:
-        >>> df = pd.DataFrame({
-        ...     'bioID': ['p1', 'p2'],
-        ...     'tmID': ['TEA', 'TEA'],
-        ...     'year': [2020, 2020],
-        ...     'position': ['G', 'C'],
-        ...     'minutes': [1000, 500],
-        ...     'points': [400, 200],
-        ...     'rebounds': [100, 150],
-        ...     'assists': [200, 50],
-        ...     'steals': [50, 20],
-        ...     'blocks': [10, 30],
-        ...     'turnovers': [80, 40]
-        ... })
-        >>> result = calculate_player_performance(df)
-        >>> 'performance' in result.columns
-        True
     """
     # Load position-specific weights
     weights = _load_weights(weights_path)

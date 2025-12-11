@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 from pathlib import Path
 import pandas as pd
 import numpy as np

@@ -2,6 +2,23 @@
 
 Este repositório aloja uma solução *end-to-end* de Machine Learning para a análise de desempenho desportivo (WNBA). O sistema implementa um pipeline completo que abrange desde a ingestão e limpeza de dados até à modelação preditiva de rankings de equipas, utilizando técnicas avançadas de engenharia de *features* e algoritmos de *Learning-to-Rank*.
 
+---
+
+## Índice
+
+- [Execução do Pipeline](#execução-do-pipeline)
+- [Análise Exploratória e Justificação Metodológica](#análise-exploratória-e-justificação-metodológica)
+  - [1. Motivação das Análises](#1-motivação-das-análises)
+  - [2. Relatórios de Jogadores](#2-relatórios-de-jogadores-reports)
+  - [3. Análise de Equipas](#3-análise-de-equipas-reports)
+  - [3.4. Análise de Coaches](#34-análise-de-coaches-reportscoaches-reportsperformance_graphscoach_performance)
+  - [4. Gráficos Exploratórios](#4-gráficos-exploratórios-reportsfigurescleaned)
+  - [5. Métricas do Modelo de Ranking](#5-métricas-do-modelo-de-ranking-reportsmodelsteam_ranking)
+  - [6. Gráficos do Modelo](#6-gráficos-do-modelo-reportsmodelsteam_rankinggraphics)
+- [7. Ranking Final — Previsão para a Época 11](#7-ranking-final--previsão-para-a-época-11)
+
+---
+
 
 ## Execução do Pipeline
 

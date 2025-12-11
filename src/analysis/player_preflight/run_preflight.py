@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Player Performance Preflight - Basic Mode
 
@@ -43,10 +40,6 @@ from src.analysis.player_preflight.temporal_dependence import (
     autocorr_year_to_year,
     optimize_decay_k,
 )
-
-# Advanced modules (disabled for basic mode):
-# from src.analysis.player_preflight.rookie_priors import calibrate_rookie_prior
-# from src.analysis.player_preflight.validation import predictive_validation, validation_stratified, sensitivity_analysis
 
 
 # Paths
